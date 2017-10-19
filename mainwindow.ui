@@ -118,6 +118,11 @@
     </column>
     <column>
      <property name="text">
+      <string>作业名称</string>
+     </property>
+    </column>
+    <column>
+     <property name="text">
       <string>状态</string>
      </property>
     </column>
