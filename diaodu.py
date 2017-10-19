@@ -12,11 +12,20 @@ JOB_POOL_LOCK = threading.Lock()
 WAITING_LIST_LOCK = threading.Lock()
 PIDs = set()
 
+# Demo Parameter
+num_waiting_max = 3
+mode = 'priority'
+
 # Waiting time for clearer show
 CPU_PROCESS_TIME = 0.1
 
 # Add priority each tern
 PRIORITY_ADD_EACH_TERN = 0.5
+
+app = QApplication(sys.argv)
+UI_main_window = mainwindow.Ui_MainWindow()
+window = QMainWindow()
+UI_main_window.setupUi(window)
 
 
 class PCB(object):
@@ -85,7 +94,9 @@ class Pool(object):
         if isinstance(job, PCB):
             self._pool.append(job)
         if type(self).__name__ == 'JobPool':
-            JobPoolTableControl.append(job)
+            job_pool_table_control.append(job)
+        elif type(self).__name__ == 'TerminatedPool':
+            terminated_table_control.append(job)
 
 
 class JobPool(Pool):
@@ -96,10 +107,16 @@ class JobPool(Pool):
     def get(self):
         if self._pool:
             job = self._pool.pop(0)
-            JobPoolTableControl
+            job.status = "ready"
+            running_table_control.append(job)
+            job_pool_table_control.pop(job)
             return job
         else:
             return
+
+
+class TerminatedPool(Pool):
+    pass
 
 
 class WaitingList(Pool):
@@ -136,7 +153,7 @@ class WaitingList(Pool):
             if each.required_time == 0:
                 self.pop(each)
                 each.status = 'terminated'
-                print('{0} terminated'.format(each.name))
+                cprint('{0} terminated'.format(each.name), color='red')
                 terminated_pool.add(each)
 
     # Tell how many items in waiting list
@@ -144,20 +161,75 @@ class WaitingList(Pool):
         return len(self._pool)
 
 
-class TerminatedPool(Pool):
-    pass
+job_pool = JobPool()
 
+waiting_list = WaitingList(scheduling_mode='priority', max=num_waiting_max)
 
 terminated_pool = TerminatedPool()
 
 
-class ShortTermSchedulingThread(QtCore.QThread):
-    def __init__(self, parent=None):
-        super(ShortTermSchedulingThread, self).__init__(parent)
+class TableControl(object):
+    def __init__(self, table, content_each_line):
+        self.table = table
+        self.content_each_line = content_each_line
 
-    def run(self):
-        # 大事
-        time.sleep(10)
+    @staticmethod
+    def _append(table, content_each_line, process):
+        table.setRowCount(table.rowCount() + 1)
+        for j in range(0, len(content_each_line)):
+            item = QTableWidgetItem(str(eval('process.' + content_each_line[j])))
+            table.setItem(table.rowCount() - 1,
+                          j,
+                          item)
+
+    @staticmethod
+    def checkbox_changed_base(table):
+        if table.item(0, 0) and table.item(0, 0).checkState() == 0:
+            print("00")
+
+    def append(self, process):
+        TableControl._append(self.table, self.content_each_line, process)
+
+    def pop(self, process):
+        """
+        for i in range(0, self.table.rowCount()):
+            print(self.table.item(i, 0).text())
+            if self.table.item(i, 0).text() == process.pid:
+                # Clear this row
+                for j in range(0, len(self.content_each_line)):
+                    self.table.setItem(i, j, QTableWidgetItem(""))
+
+                time.sleep(1)
+
+                # Move rows after me
+                if i < self.table.rowCount() - 1:
+                    for j in range(i + 1, self.table.rowCount()):
+                        for k in range(0, len(self.content_each_line)):
+                            self.table.setItem(i, j, "")
+
+        """
+
+    def checkbox_changed(self):
+        TableControl.checkbox_changed_base(UI_main_window.JobPoolTable)
+
+
+job_pool_table_control = TableControl(table=UI_main_window.JobPoolTable,
+                                      content_each_line=['pid',
+                                                         'name',
+                                                         'status',
+                                                         'priority',
+                                                         'required_time'])
+
+running_table_control = TableControl(table=UI_main_window.RunningTable,
+                                     content_each_line=['pid',
+                                                        'name',
+                                                        'status',
+                                                        'priority',
+                                                        'required_time',
+                                                        'address'])
+
+terminated_table_control = TableControl(table=UI_main_window.TerminatedTable,
+                                        content_each_line=['pid', 'name'])
 
 
 # CPU scheduling Thread
@@ -207,74 +279,11 @@ def long_term_scheduling_thread(mode, waiting_list, job_pool):
         time.sleep(0.01)
 
 
-app = QApplication(sys.argv)
-UI_main_window = mainwindow.Ui_MainWindow()
-window = QMainWindow()
-UI_main_window.setupUi(window)
-
-# Demo Parameter
-num_job_to_create = 5
-num_waiting_max = 3
-mode = 'priority'
-
-# Create job_pool
-job_pool = JobPool()
-
-# Create waiting list
-waiting_list = WaitingList(scheduling_mode='priority', max=num_waiting_max)
-for _ in range(num_waiting_max):
-    waiting_list.add(job_pool.get())
-print("Waiting list:")
-print(waiting_list)
-
-
-class TableControl(object):
-    def __init__(self, table):
-        self.table = table
-
-    @staticmethod
-    def append_base(table, content_each_line, process):
-        table.setRowCount(table.rowCount() + 1)
-        check_box_item = QTableWidgetItem()
-        check_box_item.setCheckState(2)
-        table.setItem(table.rowCount() - 1, 0, check_box_item)
-        for j in range(0, len(content_each_line)):
-            item = QTableWidgetItem(str(eval('process.' + content_each_line[j])))
-            table.setItem(table.rowCount() - 1,
-                          j + 1,
-                          item)
-
-    @staticmethod
-    def checkbox_changed_base(table):
-        if table.item(0, 0) and table.item(0, 0).checkState() == 0:
-            print("00")
-
-
-class JobPoolTableControl(TableControl):
-    content_each_line = ['pid', 'name', 'status', 'priority', 'required_time']
-
-    @staticmethod
-    def append(process):
-        TableControl.append_base(UI_main_window.JobPoolTable, JobPoolTableControl.content_each_line, process)
-
-    @staticmethod
-    def checkbox_changed():
-        TableControl.checkbox_changed_base(UI_main_window.JobPoolTable)
-
-
-class RunningTableControl(TableControl):
-    content_each_line = ['pid', 'name', 'status', 'priority', 'required_time']
-
-    @staticmethod
-    def append(process):
-        TableControl.append_base(UI_main_window.JobPoolTable, JobPoolTableControl.content_each_line, process)
-
-    @staticmethod
-    def checkbox_changed():
-        TableControl.checkbox_changed_base(UI_main_window.JobPoolTable)
-
-
 def slotStartButton():
+    global num_waiting_max
+    num_waiting_max = UI_main_window.DaoshuBox.value()
+    waiting_list.max = UI_main_window.DaoshuBox.value()
+
     # Create CPU thread
     st_scheduling_thread = threading.Thread(target=short_term_scheduling_thread,
                                             args=(mode, waiting_list))
@@ -289,9 +298,6 @@ def slotGenerateJobButton():
         random_process = PCB.random()
         job_pool.add(random_process)
 
-    print("Inited job_pool:")
-    print(job_pool)
-
 
 def slotAddJobButton():
     job_pool.add(PCB(PCB.generate_pid(),
@@ -301,13 +307,16 @@ def slotAddJobButton():
 
 
 # Set table width
-UI_main_window.JobPoolTable.setColumnWidth(0, 30)
-UI_main_window.RunningTable.setColumnWidth(0, 30)
-UI_main_window.SuspendTable.setColumnWidth(0, 30)
+UI_main_window.JobPoolTable.setColumnWidth(0, 50)
+UI_main_window.RunningTable.setColumnWidth(0, 50)
+UI_main_window.SuspendTable.setColumnWidth(0, 50)
 
 # Stretch last column of the table
 UI_main_window.JobPoolTable.horizontalHeader().setStretchLastSection(True)
+UI_main_window.JobPoolTable.horizontalHeader().setStretchLastSection(True)
 UI_main_window.TerminatedTable.horizontalHeader().setStretchLastSection(True)
+UI_main_window.RunningTable.horizontalHeader().setStretchLastSection(True)
+UI_main_window.SuspendTable.horizontalHeader().setStretchLastSection(True)
 
 # Connect slots
 UI_main_window.StartButton.clicked.connect(slotStartButton)
