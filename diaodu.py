@@ -1,8 +1,7 @@
 import mainwindow
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QCheckBox
-from PyQt5 import QtCore
-from PyQt5 import QtGui
+from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidgetItem
+from PyQt5 import QtCore, QtGui
 import random
 import time
 import threading
@@ -128,9 +127,7 @@ class JobPool(Pool):
     def pop(self):
         if self._pool:
             job = self._pool.pop(0)
-
             self.refreshTableSignal.emit("job_pool_table_control", job, "remove")
-
             return job
 
 
@@ -172,6 +169,7 @@ class WaitingList(Pool):
             job.status = 'ready'
 
         # Update table
+        print("update ui")
         self.editTableSignal.emit("running_table_control", job.pid, 4, str(job.required_time))
 
         # Need to be terminated
@@ -357,7 +355,7 @@ if __name__ == '__main__':
 
     # Create pool instances
     job_pool = JobPool()
-    waiting_list = WaitingList(scheduling_mode='priority', max=5)
+    waiting_list = WaitingList(scheduling_mode=MODE, max=5)
     terminated_pool = TerminatedPool()
 
     job_pool.connectSignal()

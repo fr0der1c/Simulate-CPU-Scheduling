@@ -10,7 +10,7 @@
     <x>0</x>
     <y>0</y>
     <width>929</width>
-    <height>601</height>
+    <height>667</height>
    </rect>
   </property>
   <property name="focusPolicy">
@@ -39,7 +39,7 @@
       <x>10</x>
       <y>40</y>
       <width>661</width>
-      <height>141</height>
+      <height>181</height>
      </rect>
     </property>
     <property name="editTriggers">
@@ -87,9 +87,9 @@
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>210</y>
+      <y>250</y>
       <width>661</width>
-      <height>151</height>
+      <height>181</height>
      </rect>
     </property>
     <property name="editTriggers">
@@ -141,7 +141,7 @@
     <property name="geometry">
      <rect>
       <x>20</x>
-      <y>190</y>
+      <y>230</y>
       <width>60</width>
       <height>16</height>
      </rect>
@@ -154,7 +154,7 @@
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>390</y>
+      <y>460</y>
       <width>661</width>
       <height>121</height>
      </rect>
@@ -208,7 +208,7 @@
     <property name="geometry">
      <rect>
       <x>20</x>
-      <y>370</y>
+      <y>440</y>
       <width>141</width>
       <height>16</height>
      </rect>
@@ -242,7 +242,7 @@
       <string>添加任务</string>
      </property>
     </widget>
-    <widget class="QWidget" name="">
+    <widget class="QWidget" name="layoutWidget">
      <property name="geometry">
       <rect>
        <x>10</x>
@@ -264,7 +264,7 @@
       </item>
      </layout>
     </widget>
-    <widget class="QWidget" name="">
+    <widget class="QWidget" name="layoutWidget">
      <property name="geometry">
       <rect>
        <x>10</x>
@@ -286,7 +286,7 @@
       </item>
      </layout>
     </widget>
-    <widget class="QWidget" name="">
+    <widget class="QWidget" name="layoutWidget">
      <property name="geometry">
       <rect>
        <x>10</x>
@@ -315,7 +315,7 @@
       <x>680</x>
       <y>180</y>
       <width>241</width>
-      <height>371</height>
+      <height>441</height>
      </rect>
     </property>
     <property name="title">
@@ -327,7 +327,7 @@
        <x>10</x>
        <y>30</y>
        <width>221</width>
-       <height>331</height>
+       <height>401</height>
       </rect>
      </property>
      <property name="editTriggers">
@@ -355,7 +355,7 @@
     <property name="geometry">
      <rect>
       <x>210</x>
-      <y>520</y>
+      <y>590</y>
       <width>456</width>
       <height>36</height>
      </rect>
@@ -413,7 +413,7 @@
      </item>
     </layout>
    </widget>
-   <widget class="QWidget" name="">
+   <widget class="QWidget" name="layoutWidget">
     <property name="geometry">
      <rect>
       <x>480</x>
@@ -426,7 +426,7 @@
      <item>
       <widget class="QSpinBox" name="RandomCountBox">
        <property name="minimum">
-        <number>3</number>
+        <number>1</number>
        </property>
        <property name="maximum">
         <number>1000</number>
