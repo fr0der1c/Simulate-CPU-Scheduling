@@ -23,7 +23,7 @@ PRIORITY_ADD_EACH_TERN = 0.5
 
 
 class PCB(object):
-    def __init__(self, pid, name, priority, required_time):
+    def __init__(self, pid, name="process_name", priority=1, required_time=200):
         self.pid = pid
         self.name = name
         self.priority = priority
@@ -70,8 +70,11 @@ class PCB(object):
         return pid
 
 
-class Pool(object):
+class Pool(QtCore.QObject):
+    refreshTableSignal = QtCore.pyqtSignal("QString", PCB)
+
     def __init__(self):
+        super().__init__()
         self._pool = []
 
     def __str__(self):
@@ -83,6 +86,9 @@ class Pool(object):
 
     def __repr__(self):
         return "<PCB Pool ({0})>:{1}".format(len(self._pool), [job for job in self._pool])
+
+    def connectSignal(self):
+        self.refreshTableSignal.connect(UI_main_window.slotTableRefresh)
 
     # Add a job to job pool
     def add(self, job):
@@ -98,11 +104,11 @@ class Pool(object):
 
             # Append to table widget
             if type(self).__name__ == 'JobPool':
-                job_pool_table_control.append(job)
+                self.refreshTableSignal.emit("job_pool_table_control", job)
             elif type(self).__name__ == 'TerminatedPool':
-                terminated_table_control.append(job)
+                self.refreshTableSignal.emit("terminated_table_control", job)
             elif type(self).__name__ == 'WaitingList':
-                running_table_control.append(job)
+                self.refreshTableSignal.emit("running_table_control", job)
 
 
 class JobPool(Pool):
@@ -153,22 +159,12 @@ class WaitingList(Pool):
         return len(self._pool)
 
 
-# Create pools instances
-job_pool = JobPool()
-waiting_list = WaitingList(scheduling_mode='priority', max=5)
-terminated_pool = TerminatedPool()
-
-
 class TableControl(object):
     def __init__(self, table, content_each_line):
         self.table = table
         self.content_each_line = content_each_line
 
     def append(self, process):
-        running_table_control_lock.acquire()
-
-        print(self.table.rowCount())
-
         self.table.setRowCount(self.table.rowCount() + 1)
 
         for j in range(0, len(self.content_each_line)):
@@ -182,37 +178,30 @@ class TableControl(object):
             # Scroll to item
             self.table.scrollToItem(item)
 
-        running_table_control_lock.release()
-
     def remove(self, process):
-        pass
-        """
-        
-                for i in range(0, self.table.rowCount()-1):
+        for i in range(0, self.table.rowCount() - 1):
             if self.table.item(i, 0).text() == str(process.pid):
                 print("hey")
                 # Clear this row
                 for j in range(0, len(self.content_each_line)):
                     pass
-                    #print(self.table.itemAt(i, j))
+                    # print(self.table.itemAt(i, j))
 
-                #time.sleep(1)
+                # time.sleep(1)
 
-                
+
                 # Move rows after me
                 if i < self.table.rowCount() - 1:
                     for j in range(i + 1, self.table.rowCount()):
                         for k in range(0, len(self.content_each_line)):
                             self.table.setItem(i, j, QTableWidgetItem(self.table.item(i + 1, j).text()))
-                
-
-        """
 
 
 class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
     def __init__(self, parent=None):
         super().__init__()
         self.setupUi(self)
+
         # Set table width
         self.JobPoolTable.setColumnWidth(0, 50)
         self.RunningTable.setColumnWidth(0, 50)
@@ -233,7 +222,6 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
 
     def slotStartButton(self):
         waiting_list.max = self.DaoshuBox.value()
-        running_table_control.append(PCB(123, "123", 1, 55))
 
         # Create thread
         st_scheduling_thread = threading.Thread(target=short_term_scheduling_thread,
@@ -258,6 +246,10 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
 
     def slotMaxWaitingChanged(self):
         waiting_list.max = self.DaoshuBox.value()
+
+    @QtCore.pyqtSlot("QString", PCB)
+    def slotTableRefresh(self, controller_name, process):
+        eval(controller_name + ".append(process)")
 
 
 # CPU scheduling Thread
@@ -311,16 +303,14 @@ def long_term_scheduling_thread(mode, waiting_list, job_pool):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     UI_main_window = MainWindow()
-    UI_main_window.show()
 
+    # Create table controller
     job_pool_table_control = TableControl(table=UI_main_window.JobPoolTable,
                                           content_each_line=['pid',
                                                              'name',
                                                              'status',
                                                              'priority',
                                                              'required_time'])
-    job_pool_table_control_lock = threading.Lock()
-
     running_table_control = TableControl(table=UI_main_window.RunningTable,
                                          content_each_line=['pid',
                                                             'name',
@@ -329,10 +319,18 @@ if __name__ == '__main__':
                                                             'required_time',
                                                             'address',
                                                             'operation'])
-    running_table_control_lock = threading.Lock()
-
     terminated_table_control = TableControl(table=UI_main_window.TerminatedTable,
                                             content_each_line=['pid', 'name'])
-    terminated_table_control_lock = threading.Lock()
 
+    # Create pool instances
+    job_pool = JobPool()
+    waiting_list = WaitingList(scheduling_mode='priority', max=5)
+    terminated_pool = TerminatedPool()
+
+    job_pool.connectSignal()
+    waiting_list.connectSignal()
+    terminated_pool.connectSignal()
+
+    # Show main window
+    UI_main_window.show()
     exit(app.exec_())
