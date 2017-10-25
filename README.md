@@ -1,6 +1,12 @@
-##Simulate-CPU-Scheduling
+## Simulate-CPU-Scheduling
 
-A demo to demonstrate CPU scheduling written in Python. Experiment of Operating System course.
+A simulation programme to demonstrate CPU scheduling written in Python with PyQt. Experiment of Operating System course.
 
-###todo
+### Environment
+Python 3.6 + PyQt 5
+
+### Run
+Just run simulation.py
+
+### todo
 - add function of suspending processes
