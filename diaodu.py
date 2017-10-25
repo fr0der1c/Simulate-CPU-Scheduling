@@ -25,9 +25,18 @@ PRIORITY_ADD_EACH_TERN = 0.5
 class PCB(object):
     def __init__(self, pid, name="process_name", priority=1, required_time=200):
         self.pid = pid
-        self.name = name
-        self.priority = priority
-        self.required_time = required_time
+        if name:
+            self.name = name
+        else:
+            self.name = "process"
+        if priority:
+            self.priority = priority
+        else:
+            self.priority = 1
+        if required_time:
+            self.required_time = required_time
+        else:
+            self.required_time = 200
         self.status = 'new'
         self.address = hex(id(self))
         self.operation = 'suspend'
@@ -71,7 +80,7 @@ class PCB(object):
 
 
 class Pool(QtCore.QObject):
-    refreshTableSignal = QtCore.pyqtSignal("QString", PCB)
+    refreshTableSignal = QtCore.pyqtSignal("QString", PCB, "QString")
 
     def __init__(self):
         super().__init__()
@@ -104,11 +113,11 @@ class Pool(QtCore.QObject):
 
             # Append to table widget
             if type(self).__name__ == 'JobPool':
-                self.refreshTableSignal.emit("job_pool_table_control", job)
+                self.refreshTableSignal.emit("job_pool_table_control", job, "append")
             elif type(self).__name__ == 'TerminatedPool':
-                self.refreshTableSignal.emit("terminated_table_control", job)
+                self.refreshTableSignal.emit("terminated_table_control", job, "append")
             elif type(self).__name__ == 'WaitingList':
-                self.refreshTableSignal.emit("running_table_control", job)
+                self.refreshTableSignal.emit("running_table_control", job, "append")
 
 
 class JobPool(Pool):
@@ -116,7 +125,9 @@ class JobPool(Pool):
     def pop(self):
         if self._pool:
             job = self._pool.pop(0)
-            # job_pool_table_control.remove(job)
+
+            self.refreshTableSignal.emit("job_pool_table_control", job, "remove")
+
             return job
 
 
@@ -145,6 +156,7 @@ class WaitingList(Pool):
         for each in self._pool:
             if each.generate_pid == job.generate_pid:
                 self._pool.remove(each)
+                self.refreshTableSignal.emit("running_table_control", job, "remove")
 
     # Remove terminated job
     def remove_terminated(self):
@@ -179,22 +191,21 @@ class TableControl(object):
             self.table.scrollToItem(item)
 
     def remove(self, process):
-        for i in range(0, self.table.rowCount() - 1):
+        for i in range(0, self.table.rowCount()):
             if self.table.item(i, 0).text() == str(process.pid):
-                print("hey")
                 # Clear this row
                 for j in range(0, len(self.content_each_line)):
-                    pass
-                    # print(self.table.itemAt(i, j))
-
-                # time.sleep(1)
-
+                    self.table.setItem(i, j, QTableWidgetItem(" "))
 
                 # Move rows after me
                 if i < self.table.rowCount() - 1:
-                    for j in range(i + 1, self.table.rowCount()):
+                    for j in range(i, self.table.rowCount() - 1):
                         for k in range(0, len(self.content_each_line)):
-                            self.table.setItem(i, j, QTableWidgetItem(self.table.item(i + 1, j).text()))
+                            self.table.setItem(j, k, QTableWidgetItem(self.table.item(j + 1, k).text()))
+                break
+
+        # Change row count
+        self.table.setRowCount(self.table.rowCount() - 1)
 
 
 class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
@@ -222,6 +233,8 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
 
     def slotStartButton(self):
         waiting_list.max = self.DaoshuBox.value()
+        self.StartButton.setDisabled(True)
+        self.StartButton.setText("正在运行")
 
         # Create thread
         st_scheduling_thread = threading.Thread(target=short_term_scheduling_thread,
@@ -247,9 +260,12 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
     def slotMaxWaitingChanged(self):
         waiting_list.max = self.DaoshuBox.value()
 
-    @QtCore.pyqtSlot("QString", PCB)
-    def slotTableRefresh(self, controller_name, process):
-        eval(controller_name + ".append(process)")
+    @QtCore.pyqtSlot("QString", PCB, "QString")
+    def slotTableRefresh(self, controller_name, process, operation):
+        if operation == "append":
+            eval(controller_name + ".append(process)")
+        elif operation == "remove":
+            eval(controller_name + ".remove(process)")
 
 
 # CPU scheduling Thread
