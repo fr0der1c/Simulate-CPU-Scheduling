@@ -13,13 +13,10 @@ JOB_POOL_LOCK = threading.Lock()
 WAITING_LIST_LOCK = threading.Lock()
 used_PIDs = set()
 
-mode = 'priority'
-
-# Waiting time for clearer show
-CPU_PROCESS_TIME = 0.1
-
-# Add priority each tern
-PRIORITY_ADD_EACH_TERN = 0.5
+MODE = 'priority'  # priority is the only available choice
+CPU_PROCESS_TIME = 0.1  # Waiting time for clearer show
+PRIORITY_ADD_EACH_TERN = 0.5  # Add priority each tern
+PRIORITY_MAX = 10  # Limit job's max priority to avoid too big priority
 
 
 class PCB(object):
@@ -167,12 +164,10 @@ class WaitingList(Pool):
     # Minus a job's required_time and sync to table widget
     def minus_time(self, job):
         if job.required_time >= 40:
-            print('Running {0}...'.format(job.name))
             job.required_time -= 40
             job.status = 'ready'
         else:
             # Required time of this job is less than quantum time
-            print('Running {0}...'.format(job.name))
             job.required_time = 0
             job.status = 'ready'
 
@@ -186,10 +181,10 @@ class WaitingList(Pool):
             terminated_pool.add(job)  # add to terminated pool
 
     # Actively adjust job's priority
-    def change_priority(self,job):
-        job.priority += PRIORITY_ADD_EACH_TERN
+    def change_priority(self, job):
+        if job.priority < PRIORITY_MAX:
+            job.priority += PRIORITY_ADD_EACH_TERN
         self.editTableSignal.emit("running_table_control", job.pid, 3, str(job.priority))
-
 
 
 class TableControl(object):
@@ -267,9 +262,9 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
 
         # Create thread
         st_scheduling_thread = threading.Thread(target=short_term_scheduling_thread,
-                                                args=(mode, waiting_list))
+                                                args=(MODE, waiting_list))
         lt_scheduling = threading.Thread(target=long_term_scheduling_thread,
-                                         args=(mode, waiting_list, job_pool))
+                                         args=(MODE, waiting_list, job_pool))
 
         # Start thread
         st_scheduling_thread.start()
@@ -312,11 +307,10 @@ def short_term_scheduling_thread(mode, waiting_list):
             processing_job.status = 'running'
 
             if mode == 'priority':
-                # Priority mode
+                # Priority MODE
                 print('Running {0}...'.format(processing_job.name))
 
                 waiting_list.change_priority(processing_job)
-
 
                 # Sleep just for show
                 time.sleep(CPU_PROCESS_TIME)

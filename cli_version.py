@@ -145,7 +145,7 @@ def short_term_scheduling_thread(mode, waiting_list):
             processing_job.status = 'running'
 
             if mode == 'priority':
-                # Priority mode
+                # Priority MODE
                 print('Running {0}...'.format(processing_job.name))
                 # Actively adjust job's priority
                 processing_job.priority += PRIORITY_ADD_EACH_TERN
