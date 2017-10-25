@@ -81,6 +81,7 @@ class PCB(object):
 
 class Pool(QtCore.QObject):
     refreshTableSignal = QtCore.pyqtSignal("QString", PCB, "QString")
+    editTableSignal = QtCore.pyqtSignal("QString", int, int, "QString")
 
     def __init__(self):
         super().__init__()
@@ -98,6 +99,7 @@ class Pool(QtCore.QObject):
 
     def connectSignal(self):
         self.refreshTableSignal.connect(UI_main_window.slotTableRefresh)
+        self.editTableSignal.connect(UI_main_window.slotTableEdit)
 
     # Add a job to job pool
     def add(self, job):
@@ -118,6 +120,10 @@ class Pool(QtCore.QObject):
                 self.refreshTableSignal.emit("terminated_table_control", job, "append")
             elif type(self).__name__ == 'WaitingList':
                 self.refreshTableSignal.emit("running_table_control", job, "append")
+
+    # Tell how many items in waiting list
+    def num(self):
+        return len(self._pool)
 
 
 class JobPool(Pool):
@@ -144,7 +150,7 @@ class WaitingList(Pool):
     def __repr__(self):
         return self.__str__()
 
-    # Get a job for CPU to process
+    # Schedule a job for CPU to process
     def get(self):
         if self.scheduling_mode == 'priority':
             # If using priority, sort waiting list using priority of each job
@@ -158,17 +164,32 @@ class WaitingList(Pool):
                 self._pool.remove(each)
                 self.refreshTableSignal.emit("running_table_control", job, "remove")
 
-    # Remove terminated job
-    def remove_terminated(self):
-        for each in self._pool:
-            if each.required_time == 0:
-                self.pop(each)
-                cprint('{0} terminated'.format(each.name), color='red')
-                terminated_pool.add(each)
+    # Minus a job's required_time and sync to table widget
+    def minus_time(self, job):
+        if job.required_time >= 40:
+            print('Running {0}...'.format(job.name))
+            job.required_time -= 40
+            job.status = 'ready'
+        else:
+            # Required time of this job is less than quantum time
+            print('Running {0}...'.format(job.name))
+            job.required_time = 0
+            job.status = 'ready'
 
-    # Tell how many items in waiting list
-    def num(self):
-        return len(self._pool)
+        # Update table
+        self.editTableSignal.emit("running_table_control", job.pid, 4, str(job.required_time))
+
+        # Need to be terminated
+        if job.required_time == 0:
+            self.pop(job)  # remove job from waiting list
+            cprint('{0} terminated'.format(job.name), color='red')
+            terminated_pool.add(job)  # add to terminated pool
+
+    # Actively adjust job's priority
+    def change_priority(self,job):
+        job.priority += PRIORITY_ADD_EACH_TERN
+        self.editTableSignal.emit("running_table_control", job.pid, 3, str(job.priority))
+
 
 
 class TableControl(object):
@@ -206,6 +227,14 @@ class TableControl(object):
 
         # Change row count
         self.table.setRowCount(self.table.rowCount() - 1)
+
+    # Edit a item and change its background color to yellow
+    def edit(self, process_id, column, new_text):
+        for i in range(0, self.table.rowCount()):
+            if self.table.item(i, 0).text() == str(process_id):
+                new_item = QTableWidgetItem(new_text)
+                new_item.setBackground(QtGui.QColor(252, 222, 156))
+                self.table.setItem(i, column, new_item)
 
 
 class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
@@ -267,6 +296,10 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
         elif operation == "remove":
             eval(controller_name + ".remove(process)")
 
+    @QtCore.pyqtSlot("QString", int, int, "QString")
+    def slotTableEdit(self, controller_name, pid, column, new_text):
+        eval(controller_name + ".edit(pid, column, new_text)")
+
 
 # CPU scheduling Thread
 def short_term_scheduling_thread(mode, waiting_list):
@@ -281,21 +314,14 @@ def short_term_scheduling_thread(mode, waiting_list):
             if mode == 'priority':
                 # Priority mode
                 print('Running {0}...'.format(processing_job.name))
-                # Actively adjust job's priority
-                processing_job.priority += PRIORITY_ADD_EACH_TERN
 
-                # Just for show
+                waiting_list.change_priority(processing_job)
+
+
+                # Sleep just for show
                 time.sleep(CPU_PROCESS_TIME)
 
-                if processing_job.required_time >= 40:
-                    print('Running {0}...'.format(processing_job.name))
-                    processing_job.required_time -= 40
-                    processing_job.status = 'ready'
-                else:
-                    # Required time of this job is less than quantum time
-                    print('Running {0}...'.format(processing_job.name))
-                    processing_job.required_time = 0
-                    processing_job.status = 'ready'
+                waiting_list.minus_time(processing_job)
 
         time.sleep(0.01)
 
@@ -303,9 +329,6 @@ def short_term_scheduling_thread(mode, waiting_list):
 # Advanced scheduling
 def long_term_scheduling_thread(mode, waiting_list, job_pool):
     while True:
-        # Remove terminated jobs
-        waiting_list.remove_terminated()
-
         # If waiting list isn't full, transfer job from job poll to waiting list
         if waiting_list.num() < waiting_list.max:
             WAITING_LIST_LOCK.acquire()
