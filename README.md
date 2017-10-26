@@ -10,3 +10,4 @@ Just run simulation.py
 
 ### todo
 - add function of suspending processes
+- process aging
