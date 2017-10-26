@@ -10,10 +10,11 @@ from termcolor import cprint
 
 JOB_POOL_LOCK = threading.Lock()
 WAITING_LIST_LOCK = threading.Lock()
+WAITING_LIST_TABLE_LOCK = threading.Lock()
 used_PIDs = set()
 
 MODE = 'priority'  # priority is the only available choice
-CPU_PROCESS_TIME = 0.1  # Waiting time for clearer show
+CPU_PROCESS_TIME = 0.3  # Waiting time for clearer show
 AGING_TABLE = [0.1, 0.2, 0.3, 0.4, 0.7, 0.9, 1.0, 1.3, 1.5, 1.9, 2.3, 2.7, 3.0, 3.5, 3.8]
 PRIORITY_ADD_EACH_TERN = 0.3  # Add priority each tern
 PRIORITY_MAX = 10  # Limit job's max priority to avoid too big priority
@@ -80,6 +81,7 @@ class PCB(object):
 class Pool(QtCore.QObject):
     refreshTableSignal = QtCore.pyqtSignal("QString", PCB, "QString")
     editTableSignal = QtCore.pyqtSignal("QString", int, int, "QString")
+    running_label_change_signal = QtCore.pyqtSignal("QString")
 
     def __init__(self):
         super().__init__()
@@ -98,6 +100,7 @@ class Pool(QtCore.QObject):
     def connectSignal(self):
         self.refreshTableSignal.connect(UI_main_window.slotTableRefresh)
         self.editTableSignal.connect(UI_main_window.slotTableEdit)
+        self.running_label_change_signal.connect(UI_main_window.slotChangeRunningLabel)
 
     # Add a job to job pool
     def add(self, job):
@@ -178,7 +181,6 @@ class WaitingList(Pool):
             job.status = 'ready'
 
         # Update table
-        print("update ui")
         self.editTableSignal.emit("running_table_control", job.pid, 4, str(job.required_time))
 
         # Need to be terminated
@@ -187,6 +189,8 @@ class WaitingList(Pool):
             self.refreshTableSignal.emit("running_table_control", job, "remove")
             cprint('{0} terminated'.format(job.name), color='red')
             terminated_pool.add(job)  # add to terminated pool
+            if len(self._pool) == 0:
+                self.running_label_change_signal.emit("")
 
     # Actively adjust job's priority
     def change_priority(self, job):
@@ -194,13 +198,13 @@ class WaitingList(Pool):
         if job.priority < PRIORITY_MAX:
             job.priority += PRIORITY_ADD_EACH_TERN
         self.editTableSignal.emit("running_table_control", job.pid, 3, str(job.priority))
+        self.running_label_change_signal.emit(job.name)
 
         # Change other job's age
         for process in self._pool:
             if process.pid != job.pid:
                 if process.age < len(AGING_TABLE) - 1:
                     process.age += 1
-                print(process.age)
                 if process.priority - AGING_TABLE[process.age] >= 0:
                     process.priority -= AGING_TABLE[process.age]
                     self.editTableSignal.emit("running_table_control", process.pid, 3, str(process.priority))
@@ -212,6 +216,7 @@ class TableControl(object):
         self.content_each_line = content_each_line
 
     def append(self, process):
+        WAITING_LIST_TABLE_LOCK.acquire()
         self.table.setRowCount(self.table.rowCount() + 1)
 
         for j in range(0, len(self.content_each_line)):
@@ -224,8 +229,10 @@ class TableControl(object):
 
             # Scroll to item
             self.table.scrollToItem(item)
+        WAITING_LIST_TABLE_LOCK.release()
 
     def remove(self, process):
+        WAITING_LIST_TABLE_LOCK.acquire()
         for i in range(0, self.table.rowCount()):
             if self.table.item(i, 0).text() == str(process.pid):
                 # Clear this row
@@ -241,9 +248,11 @@ class TableControl(object):
 
         # Change row count
         self.table.setRowCount(self.table.rowCount() - 1)
+        WAITING_LIST_TABLE_LOCK.release()
 
     # Edit a item and change its background color to yellow
     def edit(self, process_id, column, new_text):
+        WAITING_LIST_TABLE_LOCK.acquire()
         for i in range(0, self.table.rowCount()):
             if self.table.item(i, 0).text() == str(process_id):
                 if column == 3:
@@ -251,6 +260,7 @@ class TableControl(object):
                 new_item = QTableWidgetItem(new_text)
                 new_item.setBackground(QtGui.QColor(252, 222, 156))
                 self.table.setItem(i, column, new_item)
+        WAITING_LIST_TABLE_LOCK.release()
 
 
 class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
@@ -320,6 +330,13 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
     def slotSuspendLinkClick(self, pid):
         process = waiting_list.pop(pid)
         suspend_pool.add(process)
+
+    @QtCore.pyqtSlot("QString")
+    def slotChangeRunningLabel(self, process_name):
+        if process_name:
+            self.NowRunningLabel.setText("Running %s" % process_name)
+        else:
+            self.NowRunningLabel.setText(" ")
 
 
 # CPU scheduling Thread

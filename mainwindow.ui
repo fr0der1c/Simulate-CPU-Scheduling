@@ -147,7 +147,7 @@
      </rect>
     </property>
     <property name="text">
-     <string>Running</string>
+     <string>Ready</string>
     </property>
    </widget>
    <widget class="QTableWidget" name="SuspendTable">
@@ -441,6 +441,19 @@
       </widget>
      </item>
     </layout>
+   </widget>
+   <widget class="QLabel" name="NowRunningLabel">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>600</y>
+      <width>141</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
