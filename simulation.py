@@ -14,9 +14,9 @@ WAITING_LIST_TABLE_LOCK = threading.Lock()
 used_PIDs = set()
 
 MODE = 'priority'  # priority is the only available choice
-CPU_PROCESS_TIME = 0.5  # Waiting time for clearer show
-AGING_TABLE = [0.1, 0.2, 0.3, 0.4, 0.7, 0.9, 1.0, 1.3, 1.5, 1.9, 2.3, 2.7, 3.0, 3.5, 3.8]
-PRIORITY_ADD_EACH_TERN = 0.3  # Add priority each tern
+CPU_PROCESS_TIME = 0.1  # Waiting time for clearer show
+AGING_TABLE = [0.1, 0.1, 0.2, 0.4, 0.4, 0.5, 1.0, 1.0, 1.5, 1.5, 2.0, 2.5, 3.0, 3.5, 3.8]
+PRIORITY_ADD_EACH_TERN = 0.5  # Add priority each tern
 PRIORITY_MAX = 10  # Limit job's max priority to avoid too big priority
 
 
@@ -362,7 +362,7 @@ def short_term_scheduling_thread(mode, waiting_list):
 
                 waiting_list.minus_time(processing_job)
 
-        time.sleep(0.01)
+        time.sleep(0.001)
 
 
 # Advanced scheduling
@@ -375,7 +375,7 @@ def long_term_scheduling_thread(mode, waiting_list, job_pool):
             waiting_list.add(job)
             WAITING_LIST_LOCK.release()
 
-        time.sleep(0.01)
+        time.sleep(0.001)
 
 
 if __name__ == '__main__':
