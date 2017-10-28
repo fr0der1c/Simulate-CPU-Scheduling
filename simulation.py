@@ -14,7 +14,7 @@ WAITING_LIST_TABLE_LOCK = threading.Lock()
 used_PIDs = set()
 
 MODE = 'priority'  # priority is the only available choice
-CPU_PROCESS_TIME = 0.3  # Waiting time for clearer show
+CPU_PROCESS_TIME = 0.5  # Waiting time for clearer show
 AGING_TABLE = [0.1, 0.2, 0.3, 0.4, 0.7, 0.9, 1.0, 1.3, 1.5, 1.9, 2.3, 2.7, 3.0, 3.5, 3.8]
 PRIORITY_ADD_EACH_TERN = 0.3  # Add priority each tern
 PRIORITY_MAX = 10  # Limit job's max priority to avoid too big priority
@@ -182,6 +182,7 @@ class WaitingList(Pool):
 
         # Update table
         self.editTableSignal.emit("running_table_control", job.pid, 4, str(job.required_time))
+        self.editTableSignal.emit("running_table_control", job.pid, 2, "ready")
 
         # Need to be terminated
         if job.required_time == 0:
@@ -198,6 +199,7 @@ class WaitingList(Pool):
         if job.priority < PRIORITY_MAX:
             job.priority += PRIORITY_ADD_EACH_TERN
         self.editTableSignal.emit("running_table_control", job.pid, 3, str(job.priority))
+        self.editTableSignal.emit("running_table_control", job.pid, 2, "running")
         self.running_label_change_signal.emit(job.name)
 
         # Change other job's age

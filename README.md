@@ -10,5 +10,3 @@ Just run simulation.py
 
 ### todo
 - add function of suspending processes
-- table lock
-- add "CPU is now processing xxx" label
