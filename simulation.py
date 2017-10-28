@@ -9,8 +9,9 @@ import name_generator
 from termcolor import cprint
 
 JOB_POOL_LOCK = threading.Lock()
-WAITING_LIST_LOCK = threading.Lock()
-WAITING_LIST_TABLE_LOCK = threading.Lock()
+READY_LOCK = threading.Lock()
+READY_TABLE_LOCK = threading.Lock()
+SUSPEND_TABLE_LOCK = threading.Lock()
 used_PIDs = set()
 
 MODE = 'priority'  # priority is the only available choice
@@ -21,7 +22,7 @@ PRIORITY_MAX = 10  # Limit job's max priority to avoid too big priority
 
 
 class PCB(object):
-    def __init__(self, pid, name="process_name", priority=1, required_time=200):
+    def __init__(self, pid, name="process", priority=1, required_time=200):
         self.pid = pid
         if name:
             self.name = name
@@ -111,7 +112,7 @@ class Pool(QtCore.QObject):
             # Change job's status
             if type(self).__name__ == 'TerminatedPool':
                 job.status = 'terminated'
-            elif type(self).__name__ == 'WaitingList':
+            elif type(self).__name__ == 'ReadyPool':
                 job.status = 'ready'
 
             # Append to table widget
@@ -119,8 +120,8 @@ class Pool(QtCore.QObject):
                 self.refreshTableSignal.emit("job_pool_table_control", job, "append")
             elif type(self).__name__ == 'TerminatedPool':
                 self.refreshTableSignal.emit("terminated_table_control", job, "append")
-            elif type(self).__name__ == 'WaitingList':
-                self.refreshTableSignal.emit("running_table_control", job, "append")
+            elif type(self).__name__ == 'ReadyPool':
+                self.refreshTableSignal.emit("ready_table_control", job, "append")
             elif type(self).__name__ == 'SuspendPool':
                 self.refreshTableSignal.emit("suspend_table_control", job, "append")
 
@@ -146,7 +147,7 @@ class SuspendPool(Pool):
     pass
 
 
-class WaitingList(Pool):
+class ReadyPool(Pool):
     def __init__(self, scheduling_mode='priority', max=5):
         super().__init__()
         self.scheduling_mode = scheduling_mode
@@ -181,13 +182,13 @@ class WaitingList(Pool):
             job.status = 'ready'
 
         # Update table
-        self.editTableSignal.emit("running_table_control", job.pid, 4, str(job.required_time))
-        self.editTableSignal.emit("running_table_control", job.pid, 2, "ready")
+        self.editTableSignal.emit("ready_table_control", job.pid, 4, str(job.required_time))
+        self.editTableSignal.emit("ready_table_control", job.pid, 2, "ready")
 
         # Need to be terminated
         if job.required_time == 0:
             self.pop(job.pid)  # remove job from waiting list
-            self.refreshTableSignal.emit("running_table_control", job, "remove")
+            self.refreshTableSignal.emit("ready_table_control", job, "remove")
             cprint('{0} terminated'.format(job.name), color='red')
             terminated_pool.add(job)  # add to terminated pool
             if len(self._pool) == 0:
@@ -198,8 +199,8 @@ class WaitingList(Pool):
         job.age = 0
         if job.priority < PRIORITY_MAX:
             job.priority += PRIORITY_ADD_EACH_TERN
-        self.editTableSignal.emit("running_table_control", job.pid, 3, str(job.priority))
-        self.editTableSignal.emit("running_table_control", job.pid, 2, "running")
+        self.editTableSignal.emit("ready_table_control", job.pid, 3, str(job.priority))
+        self.editTableSignal.emit("ready_table_control", job.pid, 2, "running")
         self.running_label_change_signal.emit(job.name)
 
         # Change other job's age
@@ -209,7 +210,7 @@ class WaitingList(Pool):
                     process.age += 1
                 if process.priority - AGING_TABLE[process.age] >= 0:
                     process.priority -= AGING_TABLE[process.age]
-                    self.editTableSignal.emit("running_table_control", process.pid, 3, str(process.priority))
+                    self.editTableSignal.emit("ready_table_control", process.pid, 3, str(process.priority))
 
 
 class TableControl(object):
@@ -218,7 +219,7 @@ class TableControl(object):
         self.content_each_line = content_each_line
 
     def append(self, process):
-        WAITING_LIST_TABLE_LOCK.acquire()
+        READY_TABLE_LOCK.acquire()
         self.table.setRowCount(self.table.rowCount() + 1)
 
         for j in range(0, len(self.content_each_line)):
@@ -231,10 +232,10 @@ class TableControl(object):
 
             # Scroll to item
             self.table.scrollToItem(item)
-        WAITING_LIST_TABLE_LOCK.release()
+        READY_TABLE_LOCK.release()
 
     def remove(self, process):
-        WAITING_LIST_TABLE_LOCK.acquire()
+        READY_TABLE_LOCK.acquire()
         for i in range(0, self.table.rowCount()):
             if self.table.item(i, 0).text() == str(process.pid):
                 # Clear this row
@@ -250,11 +251,11 @@ class TableControl(object):
 
         # Change row count
         self.table.setRowCount(self.table.rowCount() - 1)
-        WAITING_LIST_TABLE_LOCK.release()
+        READY_TABLE_LOCK.release()
 
     # Edit a item and change its background color to yellow
     def edit(self, process_id, column, new_text):
-        WAITING_LIST_TABLE_LOCK.acquire()
+        READY_TABLE_LOCK.acquire()
         for i in range(0, self.table.rowCount()):
             if self.table.item(i, 0).text() == str(process_id):
                 if column == 3:
@@ -262,7 +263,7 @@ class TableControl(object):
                 new_item = QTableWidgetItem(new_text)
                 new_item.setBackground(QtGui.QColor(252, 222, 156))
                 self.table.setItem(i, column, new_item)
-        WAITING_LIST_TABLE_LOCK.release()
+        READY_TABLE_LOCK.release()
 
 
 class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
@@ -289,15 +290,15 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
         # UI_main_window.JobPoolTable.currentCellChanged(0,0).connect(JobPoolTableControl.checkbox_changed)
 
     def slotStartButton(self):
-        waiting_list.max = self.DaoshuBox.value()
+        ready_pool.max = self.DaoshuBox.value()
         self.StartButton.setDisabled(True)
         self.StartButton.setText("正在运行")
 
         # Create thread
         st_scheduling_thread = threading.Thread(target=short_term_scheduling_thread,
-                                                args=(MODE, waiting_list))
+                                                args=(MODE, ready_pool))
         lt_scheduling = threading.Thread(target=long_term_scheduling_thread,
-                                         args=(MODE, waiting_list, job_pool))
+                                         args=(MODE, ready_pool, job_pool))
 
         # Start thread
         st_scheduling_thread.start()
@@ -315,7 +316,7 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
                          self.AddJobTimeEdit.text()))
 
     def slotMaxWaitingChanged(self):
-        waiting_list.max = self.DaoshuBox.value()
+        ready_pool.max = self.DaoshuBox.value()
 
     @QtCore.pyqtSlot("QString", PCB, "QString")
     def slotTableRefresh(self, controller_name, process, operation):
@@ -330,7 +331,7 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
 
     @QtCore.pyqtSlot(int)
     def slotSuspendLinkClick(self, pid):
-        process = waiting_list.pop(pid)
+        process = ready_pool.pop(pid)
         suspend_pool.add(process)
 
     @QtCore.pyqtSlot("QString")
@@ -346,9 +347,9 @@ def short_term_scheduling_thread(mode, waiting_list):
     while True:
         # Get a job from waiting list
         if waiting_list.num() > 0:
-            WAITING_LIST_LOCK.acquire()
+            READY_LOCK.acquire()
             processing_job = waiting_list.get()
-            WAITING_LIST_LOCK.release()
+            READY_LOCK.release()
             processing_job.status = 'running'
 
             if mode == 'priority':
@@ -370,10 +371,10 @@ def long_term_scheduling_thread(mode, waiting_list, job_pool):
     while True:
         # If waiting list isn't full, transfer job from job poll to waiting list
         if waiting_list.num() < waiting_list.max:
-            WAITING_LIST_LOCK.acquire()
+            READY_LOCK.acquire()
             job = job_pool.pop()
             waiting_list.add(job)
-            WAITING_LIST_LOCK.release()
+            READY_LOCK.release()
 
         time.sleep(0.001)
 
@@ -389,8 +390,8 @@ if __name__ == '__main__':
                                                              'status',
                                                              'priority',
                                                              'required_time'])
-    running_table_control = TableControl(table=UI_main_window.RunningTable,
-                                         content_each_line=['pid',
+    ready_table_control = TableControl(table=UI_main_window.RunningTable,
+                                       content_each_line=['pid',
                                                             'name',
                                                             'status',
                                                             'priority',
@@ -410,12 +411,12 @@ if __name__ == '__main__':
 
     # Create pool instances
     job_pool = JobPool()
-    waiting_list = WaitingList(scheduling_mode=MODE, max=5)
+    ready_pool = ReadyPool(scheduling_mode=MODE, max=5)
     terminated_pool = TerminatedPool()
     suspend_pool = Pool()
 
     job_pool.connectSignal()
-    waiting_list.connectSignal()
+    ready_pool.connectSignal()
     terminated_pool.connectSignal()
 
     # Show main window
