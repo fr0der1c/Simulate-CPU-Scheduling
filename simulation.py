@@ -251,15 +251,14 @@ class TableController(object):
         self.table.setRowCount(self.table.rowCount() + 1)
 
         for j in range(0, len(self.content_each_line)):
-            item = QTableWidgetItem(str(eval('process.' + self.content_each_line[j])))
+            if j == 3:
+                # Special for priority column
+                item = QTableWidgetItem(str("%.2f" % float(eval('process.' + self.content_each_line[j]))))
+            else:
+                item = QTableWidgetItem(str(eval('process.' + self.content_each_line[j])))
 
-            # Add item to table
-            self.table.setItem(self.table.rowCount() - 1,
-                               j,
-                               item)
-
-            # Scroll to item
-            self.table.scrollToItem(item)
+            self.table.setItem(self.table.rowCount() - 1, j, item)  # Add item to table
+            self.table.scrollToItem(item)  # Scroll to item
         self.lock.release()
 
     def remove(self, process):
