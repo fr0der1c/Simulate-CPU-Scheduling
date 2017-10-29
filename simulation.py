@@ -19,7 +19,7 @@ TERMINATED_TABLE_LOCK = threading.Lock()
 used_PIDs = set()
 
 MODE = 'priority'  # priority is the only available choice
-CPU_PROCESS_TIME = 2  # Waiting time for clearer show
+CPU_PROCESS_TIME = 0.5  # Waiting time for clearer show
 AGING_TABLE = [0.1, 0.1, 0.2, 0.4, 0.4, 0.5, 1.0, 1.0, 1.5, 1.5, 2.0, 2.5, 3.0, 3.5, 3.8]
 PRIORITY_ADD_EACH_TERN = 0.5  # Add priority each tern
 PRIORITY_MAX = 10  # Limit job's max priority to avoid too big priority
@@ -90,6 +90,14 @@ class Pool(QtCore.QObject):
     def __init__(self):
         super().__init__()
         self._pool = []
+        if type(self).__name__ == 'JobPool':
+            self.table_controller = "job_pool_table_control"
+        elif type(self).__name__ == 'TerminatedPool':
+            self.table_controller = "terminated_table_control"
+        elif type(self).__name__ == 'ReadyPool':
+            self.table_controller = "ready_table_control"
+        elif type(self).__name__ == 'SuspendPool':
+            self.table_controller = "suspend_table_control"
 
     def __str__(self):
         print("<{1} Pool ({0})>".format(len(self._pool), type(self).__name__))
@@ -121,15 +129,7 @@ class Pool(QtCore.QObject):
                 job.status = 'suspend'
 
             # Append to table widget
-            if type(self).__name__ == 'JobPool':
-                self.refreshTableSignal.emit("job_pool_table_control", job, "append")
-            elif type(self).__name__ == 'TerminatedPool':
-                self.refreshTableSignal.emit("terminated_table_control", job, "append")
-            elif type(self).__name__ == 'ReadyPool':
-                self.refreshTableSignal.emit("ready_table_control", job, "append")
-            elif type(self).__name__ == 'SuspendPool':
-                print("add to suspend")
-                self.refreshTableSignal.emit("suspend_table_control", job, "append")
+            self.refreshTableSignal.emit(self.table_controller, job, "append")
 
     # Tell how many items in waiting list
     def num(self):
@@ -141,6 +141,22 @@ class Pool(QtCore.QObject):
             if item.pid == int(pid):
                 return item
         return None
+
+    # Remove a job
+    def remove(self, identifier):
+        for each in self._pool:
+            if isinstance(identifier, PCB):
+                if each.pid == identifier.pid:
+                    to_return = each
+                    self.refreshTableSignal.emit(self.table_controller, identifier, "remove")
+                    self._pool.remove(each)
+                    return to_return
+            elif isinstance(identifier, int):
+                if each.pid == int(identifier):
+                    to_return = each
+                    self.refreshTableSignal.emit(self.table_controller, self.item(identifier), "remove")
+                    self._pool.remove(each)
+                    return to_return
 
 
 class JobPool(Pool):
@@ -176,22 +192,6 @@ class ReadyPool(Pool):
             self._pool = sorted(self._pool, key=lambda item: item.priority)
         return self._pool[0]
 
-    # Remove a job
-    def pop(self, identifier):
-        for each in self._pool:
-            if isinstance(identifier, PCB):
-                if each.pid == identifier.pid:
-                    to_return = each
-                    self.refreshTableSignal.emit("ready_table_control", identifier, "remove")
-                    self._pool.remove(each)
-                    return to_return
-            elif isinstance(identifier, int):
-                if each.pid == int(identifier):
-                    to_return = each
-                    self.refreshTableSignal.emit("ready_table_control", self.item(identifier), "remove")
-                    self._pool.remove(each)
-                    return to_return
-
     # Minus a job's required_time and sync to table widget
     def minus_time(self, job):
         if job.required_time >= 40:
@@ -208,7 +208,7 @@ class ReadyPool(Pool):
 
         # Need to be terminated
         if job.required_time == 0:
-            self.pop(job.pid)  # remove job from waiting list
+            self.remove(job.pid)  # remove job from waiting list
             cprint('{0} terminated'.format(job.name), color='red')
             terminated_pool.add(job)  # add to terminated pool
             if len(self._pool) == 0:
@@ -294,14 +294,21 @@ class TableController(object):
                 self.table.setItem(i, column, new_item)
         self.lock.release()
 
+    # Slot for suspending and resuming process
     def itemClickedSlot(self, item):
         if type(self).__name__ == 'ReadyTableController':
             if item.column() == 0 and self.table.item(item.row(), 2).text() == "ready":
                 print("Suspend %s" % self.table.item(item.row(), 0).text())
                 process = ready_pool.item(self.table.item(item.row(), 0).text())
                 print(process)
-                ready_pool.pop(process)
+                ready_pool.remove(process)
                 suspend_pool.add(process)
+        elif type(self).__name__ == 'SuspendTableController':
+            if item.column() == 0:
+                print("Resume %s" % self.table.item(item.row(), 0).text())
+                process = suspend_pool.item(self.table.item(item.row(), 0).text())
+                suspend_pool.remove(process)
+                ready_pool.add(process)
 
 
 class JobPoolTableController(TableController):
