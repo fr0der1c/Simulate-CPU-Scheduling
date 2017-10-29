@@ -9,7 +9,7 @@ import name_generator
 from termcolor import cprint
 
 JOB_POOL_LOCK = threading.Lock()
-READY_LOCK = threading.Lock()
+READY_POOL_LOCK = threading.Lock()
 
 JOB_POOL_TABLE_LOCK = threading.Lock()
 READY_TABLE_LOCK = threading.Lock()
@@ -114,10 +114,9 @@ class Pool(QtCore.QObject):
         self.editTableSignal.connect(UI_main_window.slotTableEdit)
         self.running_label_change_signal.connect(UI_main_window.slotChangeRunningLabel)
 
-    # Add a job to job pool
+    # Add a job to pool
     def add(self, job):
         if isinstance(job, PCB):
-            # Append to pool
             self._pool.append(job)
 
             # Change job's status
@@ -338,7 +337,6 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
         self.SuspendTable.setColumnWidth(0, 50)
 
         # Stretch last column of the table
-        # UI_main_window.JobPoolTable.horizontalHeader().setStretchLastSection(True)
         self.TerminatedTable.horizontalHeader().setStretchLastSection(True)
         self.ReadyTable.horizontalHeader().setStretchLastSection(True)
         self.SuspendTable.horizontalHeader().setStretchLastSection(True)
@@ -348,7 +346,6 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
         self.GenerateJobButton.clicked.connect(self.slotGenerateJobButton)
         self.AddJobButton.clicked.connect(self.slotAddJobButton)
         self.DaoshuBox.valueChanged.connect(self.slotMaxWaitingChanged)
-        # UI_main_window.JobPoolTable.currentCellChanged(0,0).connect(JobPoolTableControl.checkbox_changed)
 
     def slotStartButton(self):
         ready_pool.max = self.DaoshuBox.value()
@@ -403,20 +400,15 @@ def short_term_scheduling_thread(mode, waiting_list):
     while True:
         # Get a job from waiting list
         if waiting_list.num() > 0:
-            READY_LOCK.acquire()
+            READY_POOL_LOCK.acquire()
             processing_job = waiting_list.get()
-            READY_LOCK.release()
+            READY_POOL_LOCK.release()
             processing_job.status = 'running'
 
             if mode == 'priority':
-                # Priority MODE
                 print('Running {0}...'.format(processing_job.name))
-
                 waiting_list.change_priority(processing_job)
-
-                # Sleep just for show
-                time.sleep(CPU_PROCESS_TIME)
-
+                time.sleep(CPU_PROCESS_TIME)  # Sleep just for show
                 waiting_list.minus_time(processing_job)
 
         time.sleep(0.001)
@@ -427,10 +419,10 @@ def long_term_scheduling_thread(mode, waiting_list, job_pool):
     while True:
         # If waiting list isn't full, transfer job from job poll to waiting list
         if waiting_list.num() < waiting_list.max:
-            READY_LOCK.acquire()
+            READY_POOL_LOCK.acquire()
             job = job_pool.pop()
             waiting_list.add(job)
-            READY_LOCK.release()
+            READY_POOL_LOCK.release()
 
         time.sleep(0.001)
 
