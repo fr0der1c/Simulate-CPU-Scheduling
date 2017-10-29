@@ -1,6 +1,6 @@
 import mainwindow
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidgetItem
+from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidgetItem, QTableWidget
 from PyQt5 import QtCore, QtGui
 import random
 import time
@@ -10,12 +10,16 @@ from termcolor import cprint
 
 JOB_POOL_LOCK = threading.Lock()
 READY_LOCK = threading.Lock()
+
+JOB_POOL_TABLE_LOCK = threading.Lock()
 READY_TABLE_LOCK = threading.Lock()
 SUSPEND_TABLE_LOCK = threading.Lock()
+TERMINATED_TABLE_LOCK = threading.Lock()
+
 used_PIDs = set()
 
 MODE = 'priority'  # priority is the only available choice
-CPU_PROCESS_TIME = 0.1  # Waiting time for clearer show
+CPU_PROCESS_TIME = 2  # Waiting time for clearer show
 AGING_TABLE = [0.1, 0.1, 0.2, 0.4, 0.4, 0.5, 1.0, 1.0, 1.5, 1.5, 2.0, 2.5, 3.0, 3.5, 3.8]
 PRIORITY_ADD_EACH_TERN = 0.5  # Add priority each tern
 PRIORITY_MAX = 10  # Limit job's max priority to avoid too big priority
@@ -38,7 +42,6 @@ class PCB(object):
             self.required_time = 200
         self.status = 'new'
         self.address = hex(id(self))
-        self.operation = 'suspend'
         self.age = 0
 
     def __str__(self):
@@ -114,6 +117,8 @@ class Pool(QtCore.QObject):
                 job.status = 'terminated'
             elif type(self).__name__ == 'ReadyPool':
                 job.status = 'ready'
+            elif type(self).__name__ == 'SuspendPool':
+                job.status = 'suspend'
 
             # Append to table widget
             if type(self).__name__ == 'JobPool':
@@ -123,11 +128,19 @@ class Pool(QtCore.QObject):
             elif type(self).__name__ == 'ReadyPool':
                 self.refreshTableSignal.emit("ready_table_control", job, "append")
             elif type(self).__name__ == 'SuspendPool':
+                print("add to suspend")
                 self.refreshTableSignal.emit("suspend_table_control", job, "append")
 
     # Tell how many items in waiting list
     def num(self):
         return len(self._pool)
+
+    # return a item for specific PID
+    def item(self, pid):
+        for item in self._pool:
+            if item.pid == int(pid):
+                return item
+        return None
 
 
 class JobPool(Pool):
@@ -164,12 +177,20 @@ class ReadyPool(Pool):
         return self._pool[0]
 
     # Remove a job
-    def pop(self, pid):
+    def pop(self, identifier):
         for each in self._pool:
-            if each.pid == pid:
-                to_return = each
-                self._pool.remove(each)
-                return to_return
+            if isinstance(identifier, PCB):
+                if each.pid == identifier.pid:
+                    to_return = each
+                    self.refreshTableSignal.emit("ready_table_control", identifier, "remove")
+                    self._pool.remove(each)
+                    return to_return
+            elif isinstance(identifier, int):
+                if each.pid == int(identifier):
+                    to_return = each
+                    self.refreshTableSignal.emit("ready_table_control", self.item(identifier), "remove")
+                    self._pool.remove(each)
+                    return to_return
 
     # Minus a job's required_time and sync to table widget
     def minus_time(self, job):
@@ -188,7 +209,6 @@ class ReadyPool(Pool):
         # Need to be terminated
         if job.required_time == 0:
             self.pop(job.pid)  # remove job from waiting list
-            self.refreshTableSignal.emit("ready_table_control", job, "remove")
             cprint('{0} terminated'.format(job.name), color='red')
             terminated_pool.add(job)  # add to terminated pool
             if len(self._pool) == 0:
@@ -213,13 +233,22 @@ class ReadyPool(Pool):
                     self.editTableSignal.emit("ready_table_control", process.pid, 3, str(process.priority))
 
 
-class TableControl(object):
+class TableController(object):
     def __init__(self, table, content_each_line):
         self.table = table
         self.content_each_line = content_each_line
+        self.table.itemClicked.connect(self.itemClickedSlot)
+        if type(self).__name__ == 'JobPoolTableController':
+            self.lock = JOB_POOL_TABLE_LOCK
+        elif type(self).__name__ == 'ReadyTableController':
+            self.lock = READY_TABLE_LOCK
+        elif type(self).__name__ == 'SuspendTableController':
+            self.lock = SUSPEND_TABLE_LOCK
+        elif type(self).__name__ == 'TerminatedTableController':
+            self.lock = TERMINATED_TABLE_LOCK
 
     def append(self, process):
-        READY_TABLE_LOCK.acquire()
+        self.lock.acquire()
         self.table.setRowCount(self.table.rowCount() + 1)
 
         for j in range(0, len(self.content_each_line)):
@@ -232,10 +261,10 @@ class TableControl(object):
 
             # Scroll to item
             self.table.scrollToItem(item)
-        READY_TABLE_LOCK.release()
+        self.lock.release()
 
     def remove(self, process):
-        READY_TABLE_LOCK.acquire()
+        self.lock.acquire()
         for i in range(0, self.table.rowCount()):
             if self.table.item(i, 0).text() == str(process.pid):
                 # Clear this row
@@ -251,11 +280,11 @@ class TableControl(object):
 
         # Change row count
         self.table.setRowCount(self.table.rowCount() - 1)
-        READY_TABLE_LOCK.release()
+        self.lock.release()
 
     # Edit a item and change its background color to yellow
     def edit(self, process_id, column, new_text):
-        READY_TABLE_LOCK.acquire()
+        self.lock.acquire()
         for i in range(0, self.table.rowCount()):
             if self.table.item(i, 0).text() == str(process_id):
                 if column == 3:
@@ -263,7 +292,32 @@ class TableControl(object):
                 new_item = QTableWidgetItem(new_text)
                 new_item.setBackground(QtGui.QColor(252, 222, 156))
                 self.table.setItem(i, column, new_item)
-        READY_TABLE_LOCK.release()
+        self.lock.release()
+
+    def itemClickedSlot(self, item):
+        if type(self).__name__ == 'ReadyTableController':
+            if item.column() == 0 and self.table.item(item.row(), 2).text() == "ready":
+                print("Suspend %s" % self.table.item(item.row(), 0).text())
+                process = ready_pool.item(self.table.item(item.row(), 0).text())
+                print(process)
+                ready_pool.pop(process)
+                suspend_pool.add(process)
+
+
+class JobPoolTableController(TableController):
+    pass
+
+
+class ReadyTableController(TableController):
+    pass
+
+
+class SuspendTableController(TableController):
+    pass
+
+
+class TerminatedTableController(TableController):
+    pass
 
 
 class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
@@ -273,13 +327,13 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
 
         # Set table width
         self.JobPoolTable.setColumnWidth(0, 50)
-        self.RunningTable.setColumnWidth(0, 50)
+        self.ReadyTable.setColumnWidth(0, 50)
         self.SuspendTable.setColumnWidth(0, 50)
 
         # Stretch last column of the table
         # UI_main_window.JobPoolTable.horizontalHeader().setStretchLastSection(True)
         self.TerminatedTable.horizontalHeader().setStretchLastSection(True)
-        self.RunningTable.horizontalHeader().setStretchLastSection(True)
+        self.ReadyTable.horizontalHeader().setStretchLastSection(True)
         self.SuspendTable.horizontalHeader().setStretchLastSection(True)
 
         # Connect slots
@@ -328,11 +382,6 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
     @QtCore.pyqtSlot("QString", int, int, "QString")
     def slotTableEdit(self, controller_name, pid, column, new_text):
         eval(controller_name + ".edit(pid, column, new_text)")
-
-    @QtCore.pyqtSlot(int)
-    def slotSuspendLinkClick(self, pid):
-        process = ready_pool.pop(pid)
-        suspend_pool.add(process)
 
     @QtCore.pyqtSlot("QString")
     def slotChangeRunningLabel(self, process_name):
@@ -384,40 +433,39 @@ if __name__ == '__main__':
     UI_main_window = MainWindow()
 
     # Create table controller
-    job_pool_table_control = TableControl(table=UI_main_window.JobPoolTable,
-                                          content_each_line=['pid',
-                                                             'name',
-                                                             'status',
-                                                             'priority',
-                                                             'required_time'])
-    ready_table_control = TableControl(table=UI_main_window.RunningTable,
-                                       content_each_line=['pid',
-                                                            'name',
-                                                            'status',
-                                                            'priority',
-                                                            'required_time',
-                                                            'address',
-                                                            'operation'])
-    suspend_table_control = TableControl(table=UI_main_window.RunningTable,
-                                         content_each_line=['pid',
-                                                            'name',
-                                                            'status',
-                                                            'priority',
-                                                            'required_time',
-                                                            'address',
-                                                            'operation'])
-    terminated_table_control = TableControl(table=UI_main_window.TerminatedTable,
-                                            content_each_line=['pid', 'name'])
+    job_pool_table_control = JobPoolTableController(table=UI_main_window.JobPoolTable,
+                                                    content_each_line=['pid',
+                                                                       'name',
+                                                                       'status',
+                                                                       'priority',
+                                                                       'required_time'])
+    ready_table_control = ReadyTableController(table=UI_main_window.ReadyTable,
+                                               content_each_line=['pid',
+                                                                  'name',
+                                                                  'status',
+                                                                  'priority',
+                                                                  'required_time',
+                                                                  'address'])
+    suspend_table_control = SuspendTableController(table=UI_main_window.SuspendTable,
+                                                   content_each_line=['pid',
+                                                                      'name',
+                                                                      'status',
+                                                                      'priority',
+                                                                      'required_time',
+                                                                      'address'])
+    terminated_table_control = TerminatedTableController(table=UI_main_window.TerminatedTable,
+                                                         content_each_line=['pid', 'name'])
 
     # Create pool instances
     job_pool = JobPool()
     ready_pool = ReadyPool(scheduling_mode=MODE, max=5)
     terminated_pool = TerminatedPool()
-    suspend_pool = Pool()
+    suspend_pool = SuspendPool()
 
     job_pool.connectSignal()
     ready_pool.connectSignal()
     terminated_pool.connectSignal()
+    suspend_pool.connectSignal()
 
     # Show main window
     UI_main_window.show()

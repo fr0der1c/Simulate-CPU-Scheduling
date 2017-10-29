@@ -83,7 +83,7 @@
      </property>
     </column>
    </widget>
-   <widget class="QTableWidget" name="RunningTable">
+   <widget class="QTableWidget" name="ReadyTable">
     <property name="geometry">
      <rect>
       <x>10</x>
@@ -129,11 +129,6 @@
     <column>
      <property name="text">
       <string>PCB指针</string>
-     </property>
-    </column>
-    <column>
-     <property name="text">
-      <string>操作</string>
      </property>
     </column>
    </widget>
@@ -196,11 +191,6 @@
     <column>
      <property name="text">
       <string>PCB指针</string>
-     </property>
-    </column>
-    <column>
-     <property name="text">
-      <string>操作</string>
      </property>
     </column>
    </widget>
