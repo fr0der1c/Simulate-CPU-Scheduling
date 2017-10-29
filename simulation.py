@@ -246,29 +246,25 @@ class TableController(object):
         elif type(self).__name__ == 'TerminatedTableController':
             self.lock = TERMINATED_TABLE_LOCK
 
+    # Append a row to table widget
     def append(self, process):
         self.lock.acquire()
         self.table.setRowCount(self.table.rowCount() + 1)
-
         for j in range(0, len(self.content_each_line)):
             if j == 3:
                 # Special for priority column
                 item = QTableWidgetItem(str("%.2f" % float(eval('process.' + self.content_each_line[j]))))
             else:
                 item = QTableWidgetItem(str(eval('process.' + self.content_each_line[j])))
-
             self.table.setItem(self.table.rowCount() - 1, j, item)  # Add item to table
             self.table.scrollToItem(item)  # Scroll to item
         self.lock.release()
 
+    # Remove a row in table widget
     def remove(self, process):
         self.lock.acquire()
         for i in range(0, self.table.rowCount()):
             if self.table.item(i, 0).text() == str(process.pid):
-                # Clear this row
-                for j in range(0, len(self.content_each_line)):
-                    self.table.setItem(i, j, QTableWidgetItem(" "))
-
                 # Move rows after me
                 if i < self.table.rowCount() - 1:
                     for j in range(i, self.table.rowCount() - 1):
@@ -276,8 +272,7 @@ class TableController(object):
                             self.table.setItem(j, k, QTableWidgetItem(self.table.item(j + 1, k).text()))
                 break
 
-        # Change row count
-        self.table.setRowCount(self.table.rowCount() - 1)
+        self.table.setRowCount(self.table.rowCount() - 1)  # row count - 1
         self.lock.release()
 
     # Edit a item and change its background color to yellow
@@ -460,6 +455,7 @@ if __name__ == '__main__':
     terminated_pool = TerminatedPool()
     suspend_pool = SuspendPool()
 
+    # Connect signals
     job_pool.connectSignal()
     ready_pool.connectSignal()
     terminated_pool.connectSignal()
