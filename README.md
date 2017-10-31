@@ -9,4 +9,4 @@ Python 3.6 + PyQt 5
 Just run simulation.py
 
 ### todo
-- add function of suspending processes
+empty
