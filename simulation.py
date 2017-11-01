@@ -9,18 +9,6 @@ import functools
 import name_generator
 from termcolor import cprint
 
-JOB_POOL_LOCK = threading.Lock()
-READY_POOL_LOCK = threading.Lock()
-SUSPEND_POOL_LOCK = threading.Lock()
-TERMINATED_POOL_LOCK = threading.Lock()
-
-JOB_POOL_TABLE_LOCK = threading.Lock()
-READY_TABLE_LOCK = threading.Lock()
-SUSPEND_TABLE_LOCK = threading.Lock()
-TERMINATED_TABLE_LOCK = threading.Lock()
-
-used_PIDs = set()
-
 MODE = 'priority'  # priority is the only available choice
 CPU_PROCESS_TIME = 0.1  # Waiting time for clearer show
 PRIORITY_ADD_EACH_TERN = 0.5  # Add priority each tern
@@ -546,6 +534,17 @@ def long_term_scheduling_thread(mode, ready_pl, job_pl):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     UI_main_window = MainWindow()
+
+    JOB_POOL_LOCK = threading.Lock()
+    JOB_POOL_TABLE_LOCK = threading.Lock()
+    READY_POOL_LOCK = threading.Lock()
+    READY_TABLE_LOCK = threading.Lock()
+    SUSPEND_POOL_LOCK = threading.Lock()
+    SUSPEND_TABLE_LOCK = threading.Lock()
+    TERMINATED_POOL_LOCK = threading.Lock()
+    TERMINATED_TABLE_LOCK = threading.Lock()
+
+    used_PIDs = set()
 
     # Create table controller
     job_pool_table_control = JobPoolTableController(table=UI_main_window.JobPoolTable,
