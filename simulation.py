@@ -5,11 +5,14 @@ from PyQt5 import QtCore, QtGui
 import random
 import time
 import threading
+import functools
 import name_generator
 from termcolor import cprint
 
 JOB_POOL_LOCK = threading.Lock()
 READY_POOL_LOCK = threading.Lock()
+SUSPEND_POOL_LOCK = threading.Lock()
+TERMINATED_POOL_LOCK = threading.Lock()
 
 JOB_POOL_TABLE_LOCK = threading.Lock()
 READY_TABLE_LOCK = threading.Lock()
@@ -19,10 +22,30 @@ TERMINATED_TABLE_LOCK = threading.Lock()
 used_PIDs = set()
 
 MODE = 'priority'  # priority is the only available choice
-CPU_PROCESS_TIME = 1.1  # Waiting time for clearer show
+CPU_PROCESS_TIME = 0.1  # Waiting time for clearer show
 PRIORITY_ADD_EACH_TERN = 0.5  # Add priority each tern
 PRIORITY_MAX = 10  # Limit job's max priority to avoid too big priority
 AGING_TABLE = [0.1, 0.1, 0.2, 0.4, 0.4, 0.5, 1.0, 1.0, 1.5, 1.5, 2.0, 2.5, 3.0, 3.5, 3.8]
+
+
+def mutex_lock(fun):
+    """
+    Mutex lock decorator for pools
+
+    :param fun: function to decorate
+    :return: wrapped function
+    """
+
+    @functools.wraps(fun)
+    def wrapper(*args):
+        # print("%s acquire" % args[0].lock)
+        args[0].lock.acquire()
+        value = fun(*args)
+        # print("%s release" % args[0].lock)
+        args[0].lock.release()
+        return value
+
+    return wrapper
 
 
 class PCB(object):
@@ -59,9 +82,13 @@ class PCB(object):
                                                                       self.name,
                                                                       str(self.required_time))
 
-    # Get a random job
     @staticmethod
     def random():
+        """
+        Generate a random job
+
+        :return: a random job
+        """
         pid = random.randint(1, 10000)
         # Avoid duplicated PID
         while pid in used_PIDs:
@@ -72,9 +99,13 @@ class PCB(object):
         used_PIDs.add(pid)
         return PCB(pid, name, priority, required_time)
 
-    # Generate a PID
     @staticmethod
     def generate_pid():
+        """
+        Generate a random PID number
+
+        :return: an unique int number
+        """
         pid = random.randint(1, 10000)
         # Avoid duplicated PID
         while pid in used_PIDs:
@@ -90,14 +121,20 @@ class Pool(QtCore.QObject):
     def __init__(self):
         super().__init__()
         self._pool = []
+
+        # Set table controller and mutex lock for each pool
         if type(self).__name__ == 'JobPool':
             self.table_controller = "job_pool_table_control"
-        elif type(self).__name__ == 'TerminatedPool':
-            self.table_controller = "terminated_table_control"
+            self.lock = JOB_POOL_LOCK
         elif type(self).__name__ == 'ReadyPool':
             self.table_controller = "ready_table_control"
+            self.lock = READY_POOL_LOCK
         elif type(self).__name__ == 'SuspendPool':
             self.table_controller = "suspend_table_control"
+            self.lock = SUSPEND_POOL_LOCK
+        elif type(self).__name__ == 'TerminatedPool':
+            self.table_controller = "terminated_table_control"
+            self.lock = TERMINATED_POOL_LOCK
 
     def __str__(self):
         print("<{1} Pool ({0})>".format(len(self._pool), type(self).__name__))
@@ -114,9 +151,11 @@ class Pool(QtCore.QObject):
         self.editTableSignal.connect(UI_main_window.slotTableEdit)
         self.running_label_change_signal.connect(UI_main_window.slotChangeRunningLabel)
 
+    @mutex_lock
     def add(self, job):
         """
         Add a job to pool
+
         :param job: Job to add
         :return: none
         """
@@ -133,16 +172,19 @@ class Pool(QtCore.QObject):
 
             self.refreshTableSignal.emit(self.table_controller, job, "append")  # Append to table widget
 
+    @mutex_lock
     def num(self):
         """
-        Tell how many items in waiting list
+        Get number of items in pool
+
         :return: length of pool
         """
         return len(self._pool)
 
     def item(self, pid):
         """
-        return a item for specific PID
+        Get a item for specific PID
+
         :param pid: PID of item
         :return: An item of specified PID
         """
@@ -151,8 +193,13 @@ class Pool(QtCore.QObject):
                 return item
         return None
 
-    # Remove a job
+    @mutex_lock
     def remove(self, identifier):
+        """
+        Remove a job
+        :param identifier: job's pid or PCB
+        :return: none
+        """
         for each in self._pool:
             if isinstance(identifier, PCB):
                 if each.pid == identifier.pid:
@@ -215,22 +262,20 @@ class ReadyPool(Pool):
         :param job: A job to minus its time
         :return: none
         """
+        job.status = 'ready'
         if job.required_time >= 40:
             job.required_time -= 40
-            job.status = 'ready'
         else:
-            # Required time of this job is less than quantum time
             job.required_time = 0
-            job.status = 'ready'
 
-        # Update table
+        # Update table widget
         self.editTableSignal.emit("ready_table_control", job.pid, 4, str(job.required_time))
         self.editTableSignal.emit("ready_table_control", job.pid, 2, "ready")
 
         # Need to be terminated
         if job.required_time == 0:
-            self.remove(job.pid)  # remove job from waiting list
             cprint('{0} terminated'.format(job.name), color='red')
+            self.remove(job.pid)  # remove job from waiting list
             terminated_pool.add(job)  # add to terminated pool
             if len(self._pool) == 0:
                 self.running_label_change_signal.emit("")
@@ -239,7 +284,7 @@ class ReadyPool(Pool):
         """
         Actively adjust job's priority
 
-        :param job: Job running
+        :param job: Job running this time
         :return: none
         """
         job.age = 0
@@ -277,6 +322,12 @@ class ReadyPool(Pool):
         """
         self.add(job)
         self.suspended_count -= 1
+
+    def count(self):
+        """
+        :return: number of jobs that could be scheduled
+        """
+        return self.max - self.suspended_count
 
 
 class TableController(object):
@@ -474,10 +525,7 @@ def short_term_scheduling_thread(mode, ready_pl):
     """
     while True:
         if ready_pl.num() > 0:
-            READY_POOL_LOCK.acquire()
             processing_job = ready_pl.get()
-            READY_POOL_LOCK.release()
-
             processing_job.status = 'running'
             if mode == 'priority':
                 print('Running {0}...'.format(processing_job.name))
@@ -491,12 +539,9 @@ def short_term_scheduling_thread(mode, ready_pl):
 # Advanced scheduling
 def long_term_scheduling_thread(mode, ready_pl, job_pl):
     while True:
-        if ready_pl.num() < ready_pl.max - ready_pl.suspended_count:
-            READY_POOL_LOCK.acquire()
+        if ready_pl.num() < ready_pl.count():
             job = job_pl.pop()
             ready_pl.add(job)
-            READY_POOL_LOCK.release()
-
         time.sleep(0.001)
 
 
