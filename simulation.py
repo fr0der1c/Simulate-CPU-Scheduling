@@ -39,18 +39,9 @@ def mutex_lock(fun):
 class PCB(object):
     def __init__(self, pid, name="process", priority=1, required_time=200):
         self.pid = pid
-        if name:
-            self.name = name
-        else:
-            self.name = "process"
-        if priority:
-            self.priority = priority
-        else:
-            self.priority = 1
-        if required_time:
-            self.required_time = required_time
-        else:
-            self.required_time = 200
+        self.name = name if name else "process"
+        self.priority = priority if priority else 1
+        self.required_time = required_time if required_time else 200
         self.status = 'new'
         self.address = hex(id(self))
         self.age = 0
