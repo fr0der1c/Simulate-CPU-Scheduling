@@ -346,6 +346,7 @@ class TableController(object):
         elif type(self).__name__ == 'TerminatedTableController':
             self.lock = TERMINATED_TABLE_LOCK
 
+    @mutex_lock
     def append(self, process):
         """
         Append a row to table widget
@@ -353,7 +354,6 @@ class TableController(object):
         :param process: process to append to widget
         :return: none
         """
-        self.lock.acquire()
         self.table.setRowCount(self.table.rowCount() + 1)
         for j in range(0, len(self.content_each_line)):
             if j == 3:
@@ -363,8 +363,8 @@ class TableController(object):
                 item = QTableWidgetItem(str(eval('process.' + self.content_each_line[j])))
             self.table.setItem(self.table.rowCount() - 1, j, item)  # Add item to table
             self.table.scrollToItem(item)  # Scroll to item
-        self.lock.release()
 
+    @mutex_lock
     def remove(self, process):
         """
         Remove a row in table widget
@@ -372,7 +372,6 @@ class TableController(object):
         :param process: process to remove from table widget
         :return: none
         """
-        self.lock.acquire()
         for i in range(0, self.table.rowCount()):
             if self.table.item(i, 0).text() == str(process.pid):
                 # Move rows after me
@@ -383,8 +382,8 @@ class TableController(object):
                 break
 
         self.table.setRowCount(self.table.rowCount() - 1)  # row count - 1
-        self.lock.release()
 
+    @mutex_lock
     def edit(self, process_id, column, new_text):
         """
         Edit a item and change its background color to yellow
@@ -394,7 +393,7 @@ class TableController(object):
         :param new_text: new text of QTableWidgetItem
         :return: none
         """
-        self.lock.acquire()
+
         for i in range(0, self.table.rowCount()):
             if self.table.item(i, 0).text() == str(process_id):
                 if column == 3:
@@ -402,7 +401,6 @@ class TableController(object):
                 new_item = QTableWidgetItem(new_text)
                 new_item.setBackground(QtGui.QColor(252, 222, 156))
                 self.table.setItem(i, column, new_item)
-        self.lock.release()
 
     def itemClickedSlot(self, item):
         """
