@@ -10,7 +10,7 @@ import name_generator
 from termcolor import cprint
 
 MODE = 'priority'  # priority is the only available choice
-CPU_PROCESS_TIME = 0.1  # Waiting time for clearer show
+CPU_PROCESS_TIME = 0.5  # Waiting time for clearer show
 PRIORITY_ADD_EACH_TERN = 0.5  # Add priority each tern
 PRIORITY_MAX = 10  # Limit job's max priority to avoid too big priority
 AGING_TABLE = [0.1, 0.1, 0.2, 0.4, 0.4, 0.5, 1.0, 1.0, 1.5, 1.5, 2.0, 2.5, 3.0, 3.5, 3.8]
@@ -151,6 +151,7 @@ class Pool(QtCore.QObject):
 
             self.refreshTableSignal.emit(self.table_controller, job, "append")  # Append to table widget
 
+    @property
     @mutex_lock
     def num(self):
         """
@@ -223,6 +224,7 @@ class ReadyPool(Pool):
     def __repr__(self):
         return self.__str__()
 
+    @mutex_lock
     def get(self):
         """
         Schedule a job for CPU to process
@@ -230,7 +232,6 @@ class ReadyPool(Pool):
         :return: a job in pool
         """
         if self.scheduling_mode == 'priority':
-            # If using priority, sort waiting list using priority of each job
             self._pool = sorted(self._pool, key=lambda item: item.priority)
         return self._pool[0]
 
@@ -302,6 +303,7 @@ class ReadyPool(Pool):
         self.add(job)
         self.suspended_count -= 1
 
+    @property
     def count(self):
         """
         :return: number of jobs that could be scheduled
@@ -501,7 +503,7 @@ def short_term_scheduling_thread(mode, ready_pl):
     :param ready_pl: ready pool
     """
     while True:
-        if ready_pl.num() > 0:
+        if ready_pl.num > 0:
             processing_job = ready_pl.get()
             processing_job.status = 'running'
             if mode == 'priority':
@@ -516,7 +518,7 @@ def short_term_scheduling_thread(mode, ready_pl):
 # Advanced scheduling
 def long_term_scheduling_thread(mode, ready_pl, job_pl):
     while True:
-        if ready_pl.num() < ready_pl.count():
+        if ready_pl.num < ready_pl.count:
             job = job_pl.pop()
             ready_pl.add(job)
         time.sleep(0.001)
