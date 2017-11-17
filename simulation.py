@@ -14,6 +14,9 @@ CPU_PROCESS_TIME = 0.5  # Waiting time for clearer show
 PRIORITY_ADD_EACH_TERN = 0.5  # Add priority each tern
 PRIORITY_MAX = 10  # Limit job's max priority to avoid too big priority
 AGING_TABLE = [0.1, 0.1, 0.2, 0.4, 0.4, 0.5, 1.0, 1.0, 1.5, 1.5, 2.0, 2.5, 3.0, 3.5, 3.8]
+COLOR_MEMORY = QtGui.QColor(12, 249, 20)
+COLOR_USED_MEMORY = QtGui.QColor(255, 152, 0)
+MEM_OS_TAKE = 20  # How much memory would operating system take
 
 
 def mutex_lock(fun):
@@ -45,7 +48,8 @@ class PCB(object):
         self.status = 'new'
         self.address = hex(id(self))
         self.age = 0
-        self.required_memory = random.randint(200, 1000)
+        self.required_memory = random.randint(1, 10)
+        self.allocated_memory = list()
 
     def __str__(self):
         cprint("<PCB {0} {2}[{1}]> priority:".format(str(self.pid),
@@ -67,7 +71,7 @@ class PCB(object):
         """
         Generate a random job
 
-        :return: a random job
+        :return: a random job object
         """
         pid = random.randint(1, 10000)
         # Avoid duplicated PID
@@ -421,6 +425,68 @@ class TerminatedTableController(TableController):
     pass
 
 
+class Memory:
+    def __init__(self, table):
+        self.table = table
+        self.lock = threading.Lock()
+        self.free_mem = [{"start": 0, "length": 100}]
+
+        # Init table widget
+        for i in range(0, 100):
+            self.table.setRowCount(self.table.rowCount() + 1)
+            item = QTableWidgetItem(" ")
+            item.setBackground(COLOR_MEMORY)
+            self.table.setItem(self.table.rowCount() - 1, 0, item)  # Add item to table
+
+        self.allocate(MEM_OS_TAKE)
+
+    @mutex_lock
+    def allocate(self, mem_need):
+        """
+        Allocate memory for a process
+        :return: Starting address or "Failure"
+        """
+        for each_free_mem in self.free_mem:
+            if each_free_mem["length"] >= mem_need:
+                # Edit table widget
+                for each_location in range(each_free_mem["start"], each_free_mem["start"] + mem_need):
+                    self._edit_table_widget("allocate", each_location)
+
+                each_free_mem["length"] -= mem_need
+                each_free_mem["start"] += mem_need
+                if each_free_mem["length"] == 0:
+                    self.free_mem.remove(each_free_mem)
+                return each_free_mem["start"]
+        return "Failure"
+        # todo compaction
+
+    @mutex_lock
+    def free(self, mem_length, mem_start):
+        """
+        Free memory for a process
+        :return: None
+        """
+        # Free memory on right bar
+        for each_location in range(mem_start, mem_length):
+            self._edit_table_widget("free", each_location)
+
+        # Free memory in free_mem list
+        self.free_mem.append({"start": mem_start, "length": mem_length})
+        while True:
+            if_combined = False
+            for mem1 in self.free_mem:
+                for mem2 in self.free_mem:
+                    if mem1["start"] + mem1["length"] == mem2["start"]:
+                        mem1["length"] += mem2["length"]
+                        self.free_mem.remove(mem2)
+                        if_combined = True
+            if not if_combined:
+                break
+
+    def _edit_table_widget(self, operation, location):
+        self.table.item(location, 0).setBackground(COLOR_USED_MEMORY if operation == "allocate" else COLOR_MEMORY)
+
+
 class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
     def __init__(self, parent=None):
         super().__init__()
@@ -431,7 +497,11 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
         self.ReadyTable.setColumnWidth(0, 50)
         self.SuspendTable.setColumnWidth(0, 50)
         self.initial_width = self.width()
-        self.setFixedWidth(929)
+
+        # Settings for right bar
+        self.setFixedWidth(929)  # hide bar on the right
+        self.rightBarWidget.setShowGrid(False)
+        self.rightBarWidget.verticalHeader().setDefaultSectionSize(5)
 
         # Stretch last column of the table
         self.TerminatedTable.horizontalHeader().setStretchLastSection(True)
@@ -445,9 +515,6 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
         self.DaoshuBox.valueChanged.connect(self.slotMaxWaitingChanged)
 
     def slotStartButton(self):
-        """
-        Slot for start button
-        """
         ready_pool.max = self.DaoshuBox.value()
         self.StartButton.setDisabled(True)
         self.StartButton.setText("正在运行")
@@ -465,9 +532,6 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
         self.setFixedWidth(self.initial_width)
 
     def slotGenerateJobButton(self):
-        """
-        Slot for GenerateJobButton
-        """
         for i in range(self.RandomCountBox.value()):
             random_process = PCB.random()
             job_pool.add(random_process)
@@ -574,11 +638,12 @@ if __name__ == '__main__':
     terminated_table_control = TerminatedTableController(table=UI_main_window.TerminatedTable,
                                                          content_each_line=['pid', 'name'])
 
-    # Create pool instances
+    # Create pool instances and memory
     job_pool = JobPool()
     ready_pool = ReadyPool(scheduling_mode=MODE, max=5)
     terminated_pool = TerminatedPool()
     suspend_pool = SuspendPool()
+    memory = Memory(UI_main_window.rightBarWidget)
 
     # Connect signals
     job_pool.connectSignal()
