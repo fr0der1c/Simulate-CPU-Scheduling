@@ -9,7 +9,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1009</width>
+    <width>1178</width>
     <height>667</height>
    </rect>
   </property>
@@ -41,9 +41,12 @@
      <rect>
       <x>10</x>
       <y>40</y>
-      <width>661</width>
+      <width>831</width>
       <height>181</height>
      </rect>
+    </property>
+    <property name="horizontalScrollBarPolicy">
+     <enum>Qt::ScrollBarAlwaysOff</enum>
     </property>
     <property name="editTriggers">
      <set>QAbstractItemView::NoEditTriggers</set>
@@ -85,15 +88,23 @@
       <string>要求运行时间</string>
      </property>
     </column>
+    <column>
+     <property name="text">
+      <string>所需内存</string>
+     </property>
+    </column>
    </widget>
    <widget class="QTableWidget" name="ReadyTable">
     <property name="geometry">
      <rect>
       <x>10</x>
       <y>250</y>
-      <width>661</width>
+      <width>831</width>
       <height>181</height>
      </rect>
+    </property>
+    <property name="horizontalScrollBarPolicy">
+     <enum>Qt::ScrollBarAsNeeded</enum>
     </property>
     <property name="editTriggers">
      <set>QAbstractItemView::NoEditTriggers</set>
@@ -132,6 +143,16 @@
     <column>
      <property name="text">
       <string>PCB指针</string>
+     </property>
+    </column>
+    <column>
+     <property name="text">
+      <string>所需内存</string>
+     </property>
+    </column>
+    <column>
+     <property name="text">
+      <string>内存首地址</string>
      </property>
     </column>
    </widget>
@@ -153,9 +174,12 @@
      <rect>
       <x>10</x>
       <y>460</y>
-      <width>661</width>
+      <width>831</width>
       <height>121</height>
      </rect>
+    </property>
+    <property name="horizontalScrollBarPolicy">
+     <enum>Qt::ScrollBarAsNeeded</enum>
     </property>
     <property name="editTriggers">
      <set>QAbstractItemView::NoEditTriggers</set>
@@ -196,6 +220,16 @@
       <string>PCB指针</string>
      </property>
     </column>
+    <column>
+     <property name="text">
+      <string>所需内存</string>
+     </property>
+    </column>
+    <column>
+     <property name="text">
+      <string>内存首地址</string>
+     </property>
+    </column>
    </widget>
    <widget class="QLabel" name="SuspendLabel">
     <property name="geometry">
@@ -213,7 +247,7 @@
    <widget class="QGroupBox" name="AddJobGroupBox">
     <property name="geometry">
      <rect>
-      <x>680</x>
+      <x>850</x>
       <y>10</y>
       <width>241</width>
       <height>161</height>
@@ -305,7 +339,7 @@
    <widget class="QGroupBox" name="FinishedGroupBox">
     <property name="geometry">
      <rect>
-      <x>680</x>
+      <x>850</x>
       <y>180</y>
       <width>241</width>
       <height>441</height>
@@ -347,7 +381,7 @@
    <widget class="QWidget" name="layoutWidget">
     <property name="geometry">
      <rect>
-      <x>305</x>
+      <x>480</x>
       <y>590</y>
       <width>361</width>
       <height>36</height>
@@ -399,7 +433,7 @@
    <widget class="QWidget" name="layoutWidget">
     <property name="geometry">
      <rect>
-      <x>480</x>
+      <x>650</x>
       <y>10</y>
       <width>191</width>
       <height>36</height>
@@ -441,7 +475,7 @@
    <widget class="QTableWidget" name="rightBarWidget">
     <property name="geometry">
      <rect>
-      <x>930</x>
+      <x>1100</x>
       <y>10</y>
       <width>71</width>
       <height>611</height>
@@ -471,7 +505,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1009</width>
+     <width>1178</width>
      <height>22</height>
     </rect>
    </property>

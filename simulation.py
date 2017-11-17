@@ -10,12 +10,13 @@ import name_generator
 from termcolor import cprint
 
 MODE = 'priority'  # priority is the only available choice
-CPU_PROCESS_TIME = 0.5  # Waiting time for clearer show
+CPU_PROCESS_TIME = 0.04  # Waiting time for clearer show
 PRIORITY_ADD_EACH_TERN = 0.5  # Add priority each tern
 PRIORITY_MAX = 10  # Limit job's max priority to avoid too big priority
 AGING_TABLE = [0.1, 0.1, 0.2, 0.4, 0.4, 0.5, 1.0, 1.0, 1.5, 1.5, 2.0, 2.5, 3.0, 3.5, 3.8]
 COLOR_MEMORY = QtGui.QColor(12, 249, 20)
 COLOR_USED_MEMORY = QtGui.QColor(255, 152, 0)
+TOTAL_MEM = 122
 MEM_OS_TAKE = 20  # How much memory would operating system take
 
 
@@ -49,7 +50,7 @@ class PCB(object):
         self.address = hex(id(self))
         self.age = 0
         self.required_memory = random.randint(1, 10)
-        self.allocated_memory = list()
+        self.allocated_memory_start = None
 
     def __str__(self):
         cprint("<PCB {0} {2}[{1}]> priority:".format(str(self.pid),
@@ -201,6 +202,7 @@ class Pool(QtCore.QObject):
 
 
 class JobPool(Pool):
+    @mutex_lock
     def pop(self):
         """
         Get the first job and remove it from job pool
@@ -209,6 +211,11 @@ class JobPool(Pool):
             job = self._pool.pop(0)
             self.refreshTableSignal.emit("job_pool_table_control", job, "remove")
             return job
+
+    @mutex_lock
+    def get(self):
+        if self._pool:
+            return self._pool[0]
 
 
 class TerminatedPool(Pool):
@@ -261,6 +268,7 @@ class ReadyPool(Pool):
         if job.required_time == 0:
             cprint('{0} terminated'.format(job.name), color='red')
             self.remove(job.pid)  # remove job from waiting list
+            memory.free(job.required_memory, job.allocated_memory_start)  # free memory
             terminated_pool.add(job)  # add to terminated pool
             if len(self._pool) == 0:
                 self.running_label_change_signal.emit("")
@@ -342,11 +350,14 @@ class TableController(object):
         """
         self.table.setRowCount(self.table.rowCount() + 1)
         for j in range(0, len(self.content_each_line)):
+            content = eval('process.' + self.content_each_line[j])
             if j == 3:
                 # Special for priority column
-                item = QTableWidgetItem(str("%.2f" % float(eval('process.' + self.content_each_line[j]))))
+                item = QTableWidgetItem(str("%.2f" % float(content)))
+            elif j == 7:
+                item = QTableWidgetItem(str(hex(content)))
             else:
-                item = QTableWidgetItem(str(eval('process.' + self.content_each_line[j])))
+                item = QTableWidgetItem(str(content))
             self.table.setItem(self.table.rowCount() - 1, j, item)  # Add item to table
             self.table.scrollToItem(item)  # Scroll to item
 
@@ -425,25 +436,28 @@ class TerminatedTableController(TableController):
     pass
 
 
-class Memory:
+class Memory(QtCore.QObject):
+    memory_edit_signal = QtCore.pyqtSignal("QString", int)
+
     def __init__(self, table):
+        super().__init__()
         self.table = table
         self.lock = threading.Lock()
-        self.free_mem = [{"start": 0, "length": 100}]
+        self.free_mem = [{"start": 0, "length": TOTAL_MEM}]
+        self.memory_edit_signal.connect(UI_main_window.slotMemoryTableEdit)
 
         # Init table widget
-        for i in range(0, 100):
+        for i in range(0, TOTAL_MEM):
             self.table.setRowCount(self.table.rowCount() + 1)
             item = QTableWidgetItem(" ")
             item.setBackground(COLOR_MEMORY)
-            self.table.setItem(self.table.rowCount() - 1, 0, item)  # Add item to table
-
-        self.allocate(MEM_OS_TAKE)
+            self.table.setItem(self.table.rowCount() - 1, 0, item)
 
     @mutex_lock
     def allocate(self, mem_need):
         """
         Allocate memory for a process
+
         :return: Starting address or "Failure"
         """
         for each_free_mem in self.free_mem:
@@ -456,20 +470,19 @@ class Memory:
                 each_free_mem["start"] += mem_need
                 if each_free_mem["length"] == 0:
                     self.free_mem.remove(each_free_mem)
-                return each_free_mem["start"]
+                return each_free_mem["start"] - mem_need
         return "Failure"
-        # todo compaction
 
     @mutex_lock
     def free(self, mem_length, mem_start):
         """
         Free memory for a process
+
         :return: None
         """
         # Free memory on right bar
-        for each_location in range(mem_start, mem_length):
+        for each_location in range(mem_start, mem_start + mem_length):
             self._edit_table_widget("free", each_location)
-
         # Free memory in free_mem list
         self.free_mem.append({"start": mem_start, "length": mem_length})
         while True:
@@ -484,7 +497,7 @@ class Memory:
                 break
 
     def _edit_table_widget(self, operation, location):
-        self.table.item(location, 0).setBackground(COLOR_USED_MEMORY if operation == "allocate" else COLOR_MEMORY)
+        self.memory_edit_signal.emit(operation, location)
 
 
 class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
@@ -499,7 +512,7 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
         self.initial_width = self.width()
 
         # Settings for right bar
-        self.setFixedWidth(929)  # hide bar on the right
+        self.setFixedWidth(1100)  # hide bar on the right
         self.rightBarWidget.setShowGrid(False)
         self.rightBarWidget.verticalHeader().setDefaultSectionSize(5)
 
@@ -525,10 +538,13 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
         lt_scheduling_thread = threading.Thread(target=long_term_scheduling_thread,
                                                 args=(MODE, ready_pool, job_pool))
 
+        memory.allocate(MEM_OS_TAKE)
+
         # Start thread
         st_scheduling_thread.start()
         lt_scheduling_thread.start()
 
+        # Show memory bar
         self.setFixedWidth(self.initial_width)
 
     def slotGenerateJobButton(self):
@@ -555,6 +571,12 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
     @QtCore.pyqtSlot("QString", int, int, "QString")
     def slotTableEdit(self, controller_name, pid, column, new_text):
         eval(controller_name + ".edit(pid, column, new_text)")
+
+    @QtCore.pyqtSlot("QString", int)
+    def slotMemoryTableEdit(self, operation, location):
+        print(operation, location)
+        memory.table.item(location, 0).setBackground(
+            COLOR_USED_MEMORY if operation == "allocate" else COLOR_MEMORY)
 
     @QtCore.pyqtSlot("QString")
     def slotChangeRunningLabel(self, process_name):
@@ -595,7 +617,13 @@ def long_term_scheduling_thread(mode, ready_pl, job_pl):
     while True:
         if ready_pl.num < ready_pl.count:
             job = job_pl.pop()
-            ready_pl.add(job)
+            if job:
+                mem = memory.allocate(job.required_memory)
+                if mem == "Failure":
+                    job_pl.add(job)
+                else:
+                    ready_pl.add(job)
+                    job.allocated_memory_start = mem
         time.sleep(0.001)
 
 
@@ -620,21 +648,26 @@ if __name__ == '__main__':
                                                                        'name',
                                                                        'status',
                                                                        'priority',
-                                                                       'required_time'])
+                                                                       'required_time',
+                                                                       'required_memory'])
     ready_table_control = ReadyTableController(table=UI_main_window.ReadyTable,
                                                content_each_line=['pid',
                                                                   'name',
                                                                   'status',
                                                                   'priority',
                                                                   'required_time',
-                                                                  'address'])
+                                                                  'address',
+                                                                  'required_memory',
+                                                                  'allocated_memory_start'])
     suspend_table_control = SuspendTableController(table=UI_main_window.SuspendTable,
                                                    content_each_line=['pid',
                                                                       'name',
                                                                       'status',
                                                                       'priority',
                                                                       'required_time',
-                                                                      'address'])
+                                                                      'address',
+                                                                      'required_memory',
+                                                                      'allocated_memory_start'])
     terminated_table_control = TerminatedTableController(table=UI_main_window.TerminatedTable,
                                                          content_each_line=['pid', 'name'])
 
