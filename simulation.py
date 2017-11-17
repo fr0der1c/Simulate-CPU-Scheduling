@@ -45,6 +45,7 @@ class PCB(object):
         self.status = 'new'
         self.address = hex(id(self))
         self.age = 0
+        self.required_memory = random.randint(200, 1000)
 
     def __str__(self):
         cprint("<PCB {0} {2}[{1}]> priority:".format(str(self.pid),
@@ -429,6 +430,8 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
         self.JobPoolTable.setColumnWidth(0, 50)
         self.ReadyTable.setColumnWidth(0, 50)
         self.SuspendTable.setColumnWidth(0, 50)
+        self.initial_width = self.width()
+        self.setFixedWidth(929)
 
         # Stretch last column of the table
         self.TerminatedTable.horizontalHeader().setStretchLastSection(True)
@@ -452,12 +455,14 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
         # Create thread
         st_scheduling_thread = threading.Thread(target=short_term_scheduling_thread,
                                                 args=(MODE, ready_pool))
-        lt_scheduling = threading.Thread(target=long_term_scheduling_thread,
-                                         args=(MODE, ready_pool, job_pool))
+        lt_scheduling_thread = threading.Thread(target=long_term_scheduling_thread,
+                                                args=(MODE, ready_pool, job_pool))
 
         # Start thread
         st_scheduling_thread.start()
-        lt_scheduling.start()
+        lt_scheduling_thread.start()
+
+        self.setFixedWidth(self.initial_width)
 
     def slotGenerateJobButton(self):
         """
@@ -515,8 +520,14 @@ def short_term_scheduling_thread(mode, ready_pl):
         time.sleep(0.001)
 
 
-# Advanced scheduling
 def long_term_scheduling_thread(mode, ready_pl, job_pl):
+    """
+    # Thread for long term scheduling
+
+    :param mode: mode for scheduling
+    :param ready_pl: ready pool object
+    :param job_pl: job pool object
+    """
     while True:
         if ready_pl.num < ready_pl.count:
             job = job_pl.pop()
