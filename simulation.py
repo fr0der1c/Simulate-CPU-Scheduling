@@ -10,7 +10,7 @@ import name_generator
 from termcolor import cprint
 
 MODE = 'priority'  # priority is the only available choice
-CPU_PROCESS_TIME = 0.04  # Waiting time for clearer show
+CPU_PROCESS_TIME = 0.7  # Waiting time for clearer show
 PRIORITY_ADD_EACH_TERN = 0.5  # Add priority each tern
 PRIORITY_MAX = 10  # Limit job's max priority to avoid too big priority
 AGING_TABLE = [0.1, 0.1, 0.2, 0.4, 0.4, 0.5, 1.0, 1.0, 1.5, 1.5, 2.0, 2.5, 3.0, 3.5, 3.8]
@@ -555,8 +555,9 @@ class MainWindow(QMainWindow, mainwindow.Ui_MainWindow):
     def slotAddJobButton(self):
         job_pool.add(PCB(PCB.generate_pid(),
                          self.AddJobNameEdit.text(),
-                         self.AddJobPriorityEdit.text(),
-                         self.AddJobTimeEdit.text()))
+                         int(self.AddJobPriorityEdit.text()),
+                         int(self.AddJobTimeEdit.text())
+                         ))
 
     def slotMaxWaitingChanged(self):
         ready_pool.max = self.DaoshuBox.value()
