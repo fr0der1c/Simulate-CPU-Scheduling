@@ -1,3 +1,5 @@
 # Created by .ignore support plugin (hsz.mobi)
 .idea
 doc
+__pycache__
+.DS_Store
